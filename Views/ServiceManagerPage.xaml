@@ -1,0 +1,161 @@
+<Page
+    x:Class="ToolBox.Views.ServiceManagerPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Loaded="Page_Loaded">
+
+    <Grid Padding="24,20,24,16" RowDefinitions="Auto,*">
+
+        <!-- Row 0: 标题 + 工具栏 -->
+        <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,12">
+            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                <TextBlock Text="服务管理器" Style="{StaticResource TitleTextBlockStyle}" />
+                <TextBlock x:Name="CountText" Text="" Style="{StaticResource CaptionTextBlockStyle}"
+                           VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <TextBlock x:Name="StatusMessage" Text="" Style="{StaticResource CaptionTextBlockStyle}"
+                           VerticalAlignment="Center" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                <AutoSuggestBox x:Name="SearchBox" PlaceholderText="搜索服务名..."
+                                QueryIcon="Find" Width="240"
+                                TextChanged="SearchBox_TextChanged" VerticalAlignment="Center" />
+                <ComboBox x:Name="StatusFilter" Width="120"
+                          SelectionChanged="Filter_Changed" VerticalAlignment="Center">
+                    <ComboBoxItem Content="全部状态" IsSelected="True" />
+                    <ComboBoxItem Content="运行中" Tag="Running" />
+                    <ComboBoxItem Content="已停止" Tag="Stopped" />
+                    <ComboBoxItem Content="启动中" Tag="StartPending" />
+                    <ComboBoxItem Content="停止中" Tag="StopPending" />
+                </ComboBox>
+                <ComboBox x:Name="StartTypeFilter" Width="120"
+                          SelectionChanged="Filter_Changed" VerticalAlignment="Center">
+                    <ComboBoxItem Content="全部类型" IsSelected="True" />
+                    <ComboBoxItem Content="自动" />
+                    <ComboBoxItem Content="手动" />
+                    <ComboBoxItem Content="禁用" />
+                </ComboBox>
+                <ToggleButton x:Name="FavoriteOnlyToggle" Click="Filter_Click"
+                              ToolTipService.ToolTip="只看收藏" Padding="8,6" VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xE735;" FontSize="14" />
+                </ToggleButton>
+                <Button Click="Refresh_Click" ToolTipService.ToolTip="刷新" Padding="8,6"
+                        VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xE72C;" FontSize="14" />
+                </Button>
+                <Button x:Name="GroupMenuBtn" ToolTipService.ToolTip="服务分组" Padding="8,6"
+                        VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xE8FD;" FontSize="14" />
+                    <Button.Flyout>
+                        <MenuFlyout x:Name="GroupFlyout" />
+                    </Button.Flyout>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <!-- Row 1: 内容区 -->
+        <Grid Grid.Row="1" RowDefinitions="Auto,*">
+            <!-- 表头 -->
+            <Grid Padding="16,8" Margin="0,0,0,2"
+                  ColumnDefinitions="36,*,100,80,60,140"
+                  Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                  CornerRadius="6,6,0,0"
+                  BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1,1,1,0">
+                <TextBlock Text="" FontSize="12" />
+                <TextBlock Grid.Column="1" Text="服务名称" FontSize="12" FontWeight="SemiBold"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <TextBlock Grid.Column="2" Text="状态" FontSize="12" FontWeight="SemiBold"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <TextBlock Grid.Column="3" Text="启动类型" FontSize="12" FontWeight="SemiBold"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <TextBlock Grid.Column="4" Text="服务名" FontSize="12" FontWeight="SemiBold"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <TextBlock Grid.Column="5" Text="操作" FontSize="12" FontWeight="SemiBold"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           HorizontalAlignment="Right" />
+            </Grid>
+
+            <!-- 列表 -->
+            <ListView x:Name="ServiceList" Grid.Row="1" SelectionMode="None" Padding="0"
+                      Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                      BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1,0,1,1"
+                      CornerRadius="0,0,6,6">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="Padding" Value="16,6" />
+                        <Setter Property="MinHeight" Value="40" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Margin" Value="0" />
+                    </Style>
+                </ListView.ItemContainerStyle>
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid ColumnDefinitions="36,*,100,80,60,140">
+                            <!-- 收藏 -->
+                            <Button Click="ToggleFavorite_Click" Tag="{Binding ServiceName}"
+                                    Padding="4" Background="Transparent" VerticalAlignment="Center">
+                                <FontIcon Glyph="{Binding FavoriteGlyph}" FontSize="13"
+                                          Foreground="{Binding FavoriteBrush}" />
+                            </Button>
+
+                            <!-- 名称 -->
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                                <TextBlock Text="{Binding DisplayName}" FontSize="13"
+                                           FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding ServiceName}" FontSize="10"
+                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                           FontFamily="Consolas" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+
+                            <!-- 状态 -->
+                            <Border Grid.Column="2" CornerRadius="3" Padding="8,3"
+                                    HorizontalAlignment="Left" VerticalAlignment="Center"
+                                    Background="{Binding StatusBrush}">
+                                <TextBlock Text="{Binding StatusText}" FontSize="11"
+                                           Foreground="White" FontWeight="SemiBold" />
+                            </Border>
+
+                            <!-- 启动类型 -->
+                            <TextBlock Grid.Column="3" Text="{Binding StartType}" FontSize="12"
+                                       VerticalAlignment="Center"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+                            <!-- 隐藏的服务名列（用于排列对齐，内容已在名称栏显示） -->
+                            <TextBlock Grid.Column="4" Text="" />
+
+                            <!-- 操作按钮 -->
+                            <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="2"
+                                        HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <Button Click="StartService_Click" Tag="{Binding ServiceName}"
+                                        ToolTipService.ToolTip="启动" Padding="6" Background="Transparent"
+                                        IsEnabled="{Binding CanStart}">
+                                    <FontIcon Glyph="&#xE768;" FontSize="13"
+                                              Foreground="{ThemeResource SystemFillColorSuccessBrush}" />
+                                </Button>
+                                <Button Click="StopService_Click" Tag="{Binding ServiceName}"
+                                        ToolTipService.ToolTip="停止" Padding="6" Background="Transparent"
+                                        IsEnabled="{Binding CanStop}">
+                                    <FontIcon Glyph="&#xE71A;" FontSize="13"
+                                              Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                                </Button>
+                                <Button Click="RestartService_Click" Tag="{Binding ServiceName}"
+                                        ToolTipService.ToolTip="重启" Padding="6" Background="Transparent"
+                                        IsEnabled="{Binding CanRestart}">
+                                    <FontIcon Glyph="&#xE72C;" FontSize="13"
+                                              Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </Grid>
+
+        <!-- 加载中 -->
+        <ProgressRing x:Name="LoadingRing" Grid.Row="1" IsActive="False"
+                      HorizontalAlignment="Center" VerticalAlignment="Center" Width="40" Height="40" />
+    </Grid>
+</Page>

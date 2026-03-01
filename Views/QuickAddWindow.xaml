@@ -1,0 +1,53 @@
+<Window
+    x:Class="ToolBox.Views.QuickAddWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="快速新增片段">
+
+    <Window.SystemBackdrop>
+        <MicaBackdrop />
+    </Window.SystemBackdrop>
+
+    <Grid Padding="20" RowDefinitions="Auto,Auto,*,Auto,Auto,Auto">
+        <!-- 标题 -->
+        <TextBox x:Name="TitleInput" PlaceholderText="片段标题" FontSize="16"
+                 Margin="0,0,0,8" KeyDown="TitleInput_KeyDown" />
+
+        <!-- 语言选择 + 文件夹 -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+            <ComboBox x:Name="LanguageInput" PlaceholderText="语言" IsEditable="True" Width="160" />
+            <ComboBox x:Name="FolderInput" PlaceholderText="文件夹" Width="160" />
+        </StackPanel>
+
+        <!-- 代码输入 -->
+        <TextBox x:Name="CodeInput" Grid.Row="2" PlaceholderText="粘贴或输入代码..."
+                 AcceptsReturn="True" TextWrapping="NoWrap"
+                 FontFamily="Consolas" FontSize="13"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                 ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                 Margin="0,0,0,8" />
+
+        <!-- 描述 -->
+        <TextBox x:Name="DescInput" Grid.Row="3" PlaceholderText="描述/备注 (可选)"
+                 Height="50" AcceptsReturn="True" Margin="0,0,0,8" />
+
+        <!-- 标签 -->
+        <AutoSuggestBox x:Name="TagInput" Grid.Row="4" PlaceholderText="标签 (回车添加)"
+                        QuerySubmitted="TagInput_QuerySubmitted"
+                        TextChanged="TagInput_TextChanged"
+                        Margin="0,0,0,4" />
+        <StackPanel x:Name="TagChips" Grid.Row="4" Orientation="Horizontal" Spacing="4"
+                    Margin="0,40,0,4" />
+
+        <!-- 按钮 -->
+        <StackPanel Grid.Row="5" Orientation="Horizontal" Spacing="8"
+                    HorizontalAlignment="Right" Margin="0,8,0,0">
+            <Button Content="取消" Click="Cancel_Click" />
+            <Button Content="保存" Style="{StaticResource AccentButtonStyle}"
+                    Click="Save_Click" />
+        </StackPanel>
+    </Grid>
+</Window>

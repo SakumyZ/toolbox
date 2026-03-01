@@ -13,16 +13,32 @@
     </Window.SystemBackdrop>
 
     <Grid>
-        <NavigationView x:Name="NavView" 
-                        PaneDisplayMode="Auto" 
-                        SelectionChanged="NavView_SelectionChanged" 
+        <NavigationView x:Name="NavView"
+                        PaneDisplayMode="Auto"
+                        SelectionChanged="NavView_SelectionChanged"
                         Loaded="NavView_Loaded">
             <NavigationView.MenuItems>
                 <NavigationViewItem Tag="Dashboard" Icon="Home" Content="Dashboard" />
+                <NavigationViewItemHeader Content="开发工具" />
+                <NavigationViewItem Tag="Snippet" Content="代码片段">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE943;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
                 <NavigationViewItemHeader Content="System Tools" />
+                <NavigationViewItem Tag="ServiceManager" Content="服务管理器">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE912;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Tag="PortViewer" Content="端口查看器">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE968;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
                 <NavigationViewItem Tag="CleanCache" Icon="Delete" Content="Clean Cache" />
             </NavigationView.MenuItems>
-            
+
             <Frame x:Name="ContentFrame" />
         </NavigationView>
     </Grid>
