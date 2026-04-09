@@ -3,7 +3,7 @@
 ## 当前版本
 
 - 版本号：v1.0.1
-- 推荐产物：win-x64 自包含发布包
+- 推荐产物：win-x64 Release 构建包
 
 ## 本地发布步骤
 
@@ -14,20 +14,24 @@
 3. 执行发布：
 
 ```powershell
-dotnet publish -c Release -r win-x64 /p:PublishProfile=Properties\PublishProfiles\win-x64.pubxml
+dotnet build -c Release -p:Platform=x64
 ```
 
 4. 发布目录默认位于：
 
 ```text
-bin\Release\net8.0-windows10.0.19041.0\win-x64\publish
+bin\x64\Release\net8.0-windows10.0.19041.0\win-x64
 ```
 
 5. 将发布目录压缩为 zip，例如：
 
 ```powershell
-Compress-Archive -Path .\bin\Release\net8.0-windows10.0.19041.0\win-x64\publish\* -DestinationPath .\dist\ToolBox-v1.0.1-win-x64.zip -Force
+Compress-Archive -Path .\bin\x64\Release\net8.0-windows10.0.19041.0\win-x64\* -DestinationPath .\dist\ToolBox-v1.0.1-win-x64.zip -Force
 ```
+
+## 说明
+
+当前项目在 `dotnet publish` 产物下会触发 Windows App SDK 启动时异常，而普通 `Release build` 输出已验证可以正常启动并渲染窗口。因此当前版本的 zip 分发以 `bin\x64\Release\net8.0-windows10.0.19041.0\win-x64` 为准。
 
 ## GitHub Release 步骤
 
