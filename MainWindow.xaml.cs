@@ -113,6 +113,12 @@ namespace ToolBox
                     case "PortViewer":
                         ContentFrame.Navigate(typeof(PortViewerPage));
                         break;
+                    case "SshConfig":
+                        ContentFrame.Navigate(typeof(SshConfigPage));
+                        break;
+                    case "Reminder":
+                        ContentFrame.Navigate(typeof(ReminderPage));
+                        break;
                     case "ServiceManager":
                         ContentFrame.Navigate(typeof(ServiceManagerPage));
                         break;

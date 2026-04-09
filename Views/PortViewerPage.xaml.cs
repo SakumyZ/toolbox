@@ -17,8 +17,10 @@ namespace ToolBox.Views
     /// </summary>
     public sealed partial class PortViewerPage : Page
     {
+        private readonly PortFavoriteService _favoriteService = new();
         private readonly ObservableCollection<PortEntryViewModel> _displayEntries = new();
         private List<PortEntry> _allEntries = new();
+        private HashSet<int> _favoritePorts = new();
         private bool _isLoaded;
 
         public PortViewerPage()
@@ -44,6 +46,7 @@ namespace ToolBox.Views
             PortList.Visibility = Visibility.Collapsed;
 
             _allEntries = await Task.Run(() => PortService.GetAllPorts());
+            _favoritePorts = _favoriteService.GetFavoritePorts();
 
             ApplyFilter();
 
@@ -77,6 +80,12 @@ namespace ToolBox.Views
                 filtered = filtered.Where(e => e.State == "LISTEN" || e.Protocol == "UDP");
             }
 
+            // 仅收藏端口
+            if (FavoriteOnlyToggle.IsChecked == true)
+            {
+                filtered = filtered.Where(e => _favoritePorts.Contains(e.LocalPort));
+            }
+
             // 搜索
             var search = SearchBox.Text?.Trim();
             if (!string.IsNullOrEmpty(search))
@@ -90,13 +99,14 @@ namespace ToolBox.Views
 
             // 排序：监听优先，然后按端口号
             var sorted = filtered
-                .OrderByDescending(e => e.State == "LISTEN")
+                .OrderByDescending(e => _favoritePorts.Contains(e.LocalPort))
+                .ThenByDescending(e => e.State == "LISTEN")
                 .ThenBy(e => e.LocalPort)
                 .ThenBy(e => e.Protocol);
 
             foreach (var entry in sorted)
             {
-                _displayEntries.Add(new PortEntryViewModel(entry));
+                _displayEntries.Add(new PortEntryViewModel(entry, _favoritePorts.Contains(entry.LocalPort)));
             }
 
             CountText.Text = $"({_displayEntries.Count} 条连接)";
@@ -128,6 +138,16 @@ namespace ToolBox.Views
         private void Filter_Click(object sender, RoutedEventArgs e)
         {
             ApplyFilter();
+        }
+
+        private void ToggleFavorite_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is int localPort)
+            {
+                _favoriteService.ToggleFavorite(localPort);
+                _favoritePorts = _favoriteService.GetFavoritePorts();
+                ApplyFilter();
+            }
         }
 
         private async void KillProcess_Click(object sender, RoutedEventArgs e)
@@ -183,12 +203,16 @@ namespace ToolBox.Views
 
         private static readonly SolidColorBrush CommonPortBrush = new(Color.FromArgb(255, 220, 160, 50));  // 金色
         private static readonly SolidColorBrush NormalPortBrush = new(Color.FromArgb(255, 200, 200, 200)); // 默认
+        private static readonly SolidColorBrush FavoritePortBrush = new(Color.FromArgb(255, 255, 200, 50));
+        private static readonly SolidColorBrush FavoriteGrayBrush = new(Color.FromArgb(255, 110, 110, 110));
 
         private readonly PortEntry _entry;
+        private readonly bool _isFavorite;
 
-        public PortEntryViewModel(PortEntry entry)
+        public PortEntryViewModel(PortEntry entry, bool isFavorite)
         {
             _entry = entry;
+            _isFavorite = isFavorite;
         }
 
         public string Protocol => _entry.Protocol;
@@ -201,6 +225,7 @@ namespace ToolBox.Views
         public string PidText => _entry.Pid.ToString();
         public string ProcessName => _entry.ProcessName;
         public string ProcessPath => string.IsNullOrEmpty(_entry.ProcessPath) ? _entry.ProcessName : _entry.ProcessPath;
+        public int LocalPort => _entry.LocalPort;
 
         public SolidColorBrush ProtocolBrush => _entry.Protocol == "TCP" ? TcpBrush : UdpBrush;
 
@@ -209,6 +234,10 @@ namespace ToolBox.Views
 
         public Visibility IsCommonPortVis =>
             PortService.CommonDevPorts.Contains(_entry.LocalPort) ? Visibility.Visible : Visibility.Collapsed;
+
+        public string FavoriteGlyph => _isFavorite ? "\xE735" : "\xE734";
+
+        public SolidColorBrush FavoriteBrush => _isFavorite ? FavoritePortBrush : FavoriteGrayBrush;
 
         public SolidColorBrush StateBrush => _entry.State switch
         {

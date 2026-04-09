@@ -5,21 +5,26 @@ This repository contains the source code for **ToolBox**, a WinUI 3 desktop appl
 ## 1. Environment & Build
 
 ### Project Structure
+
 - **Framework**: .NET 8.0 (`net8.0-windows10.0.19041.0`)
 - **UI Stack**: WinUI 3 (Windows App SDK)
 - **Project File**: `ToolBox.csproj`
 - **Solution File**: `ToolBox.slnx`
 
 ### Build Commands
+
 Always verify your changes by building the project.
 
 - **Build Solution**:
+
   ```bash
   dotnet build
   ```
-  *Note: This restores dependencies and compiles the application.*
+
+  _Note: This restores dependencies and compiles the application._
 
 - **Clean Solution**:
+
   ```bash
   dotnet clean
   ```
@@ -28,12 +33,14 @@ Always verify your changes by building the project.
   ```bash
   dotnet run
   ```
-  *Note: WinUI apps might require deployment. If `dotnet run` fails to launch the UI context correctly in a headless agent environment, rely on `dotnet build` for verification.*
+  _Note: WinUI apps might require deployment. If `dotnet run` fails to launch the UI context correctly in a headless agent environment, rely on `dotnet build` for verification._
 
 ### Testing
-*Currently, no unit test projects are present in the root directory.*
+
+_Currently, no unit test projects are present in the root directory._
 
 If asked to add tests:
+
 1. Create a new test project (e.g., `ToolBox.Tests`) using xUnit or MSTest.
 2. Add a reference to the main `ToolBox` project.
 3. Run tests using:
@@ -46,8 +53,10 @@ If asked to add tests:
 Follow the existing patterns found in `.cs` and `.xaml` files.
 
 ### General Formatting
+
 - **Indentation**: 4 spaces.
 - **Braces**: Allman style (opening braces on a new line).
+
   ```csharp
   // Correct
   public void Method()
@@ -60,14 +69,16 @@ Follow the existing patterns found in `.cs` and `.xaml` files.
       // ...
   }
   ```
+
 - **Line Length**: Aim for < 120 characters, but do not aggressively wrap lines if it hurts readability.
 
 ### Naming Conventions
+
 - **Classes, Methods, Properties, Events**: PascalCase.
   - `public class MainWindow`
   - `public void InitializeComponent()`
   - `public int ItemCount { get; set; }`
-- **Private Fields**: _camelCase (underscore prefix).
+- **Private Fields**: \_camelCase (underscore prefix).
   - `private Window? _window;`
   - `private readonly List<string> _items;`
 - **Parameters & Local Variables**: camelCase.
@@ -75,6 +86,7 @@ Follow the existing patterns found in `.cs` and `.xaml` files.
 - **Event Handlers**: `Object_EventName` (e.g., `Button_Click`).
 
 ### Type Safety & Nullability
+
 - **Nullable Reference Types**: **ENABLED**.
   - The project uses `<Nullable>enable</Nullable>`.
   - Explicitly mark nullable types: `string?`, `Window?`.
@@ -82,6 +94,7 @@ Follow the existing patterns found in `.cs` and `.xaml` files.
   - Use pattern matching where appropriate: `if (obj is string s) { ... }`.
 
 ### Namespaces & Imports
+
 - **Namespace Style**: Block-scoped (Standard C# style).
   ```csharp
   namespace ToolBox
@@ -97,6 +110,7 @@ Follow the existing patterns found in `.cs` and `.xaml` files.
   5. Alias directives (e.g., `using WinRect = Windows.Foundation.Rect;`).
 
 ### Comments & Documentation
+
 - **XML Documentation**: Use `///` for all public classes, methods, and complex logic.
   ```csharp
   /// <summary>
@@ -112,6 +126,7 @@ Follow the existing patterns found in `.cs` and `.xaml` files.
 ## 3. Architecture & Patterns
 
 ### WinUI 3 Specifics
+
 - **XAML Files**:
   - `x:Class` must match the code-behind namespace and class name.
   - Use `x:Name` to generate fields in the code-behind for control access.
@@ -121,6 +136,7 @@ Follow the existing patterns found in `.cs` and `.xaml` files.
   - `InitializeComponent()` must be the first call in the constructor.
 
 ### Error Handling
+
 - **Exceptions**:
   - Catch specific exceptions rather than generic `Exception` where possible.
   - Do not swallow exceptions silently. Log or handle them.
@@ -142,8 +158,12 @@ When implementing features or fixing bugs:
    - Ensure no regressions in existing code style.
 
 ## 5. Dependencies
+
 Key libraries currently in use:
+
 - **Microsoft.WindowsAppSDK**: Core WinUI 3 framework.
 - **Microsoft.Windows.SDK.BuildTools**: Build infrastructure.
 
 Do not remove these packages unless explicitly instructed.
+
+实装完需求后，注意将 plan.md 的文档进行更新

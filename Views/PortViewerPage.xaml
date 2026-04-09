@@ -36,6 +36,11 @@
                     <ComboBoxItem Content="TIME_WAIT" />
                     <ComboBoxItem Content="CLOSE_WAIT" />
                 </ComboBox>
+                <ToggleButton x:Name="FavoriteOnlyToggle" Click="Filter_Click"
+                              ToolTipService.ToolTip="只看收藏端口" Padding="8,6"
+                              VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xE735;" FontSize="14" />
+                </ToggleButton>
                 <ToggleButton x:Name="ListenOnlyToggle" Click="Filter_Click"
                               ToolTipService.ToolTip="仅显示监听端口" Padding="8,6"
                               VerticalAlignment="Center">
@@ -50,25 +55,27 @@
 
         <!-- Row 1: 表头 -->
         <Grid Grid.Row="1" Padding="16,8" Margin="0,0,0,2"
-              ColumnDefinitions="70,100,80,150,80,100,*,40"
+                            ColumnDefinitions="36,70,100,80,150,80,100,*,40"
               Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
               CornerRadius="6,6,0,0"
               BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1,1,1,0">
+                        <TextBlock Text="" FontSize="12" />
             <TextBlock Text="协议" FontSize="12" FontWeight="SemiBold"
+                                             Grid.Column="1"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            <TextBlock Grid.Column="1" Text="本地地址" FontSize="12" FontWeight="SemiBold"
+                        <TextBlock Grid.Column="2" Text="本地地址" FontSize="12" FontWeight="SemiBold"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            <TextBlock Grid.Column="2" Text="端口" FontSize="12" FontWeight="SemiBold"
+                        <TextBlock Grid.Column="3" Text="端口" FontSize="12" FontWeight="SemiBold"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            <TextBlock Grid.Column="3" Text="远程地址" FontSize="12" FontWeight="SemiBold"
+                        <TextBlock Grid.Column="4" Text="远程地址" FontSize="12" FontWeight="SemiBold"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            <TextBlock Grid.Column="4" Text="状态" FontSize="12" FontWeight="SemiBold"
+                        <TextBlock Grid.Column="5" Text="状态" FontSize="12" FontWeight="SemiBold"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            <TextBlock Grid.Column="5" Text="PID" FontSize="12" FontWeight="SemiBold"
+                        <TextBlock Grid.Column="6" Text="PID" FontSize="12" FontWeight="SemiBold"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            <TextBlock Grid.Column="6" Text="进程" FontSize="12" FontWeight="SemiBold"
+                        <TextBlock Grid.Column="7" Text="进程" FontSize="12" FontWeight="SemiBold"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            <TextBlock Grid.Column="7" Text="" FontSize="12" />
+                        <TextBlock Grid.Column="8" Text="" FontSize="12" />
         </Grid>
 
         <!-- Row 2: 列表 -->
@@ -86,21 +93,28 @@
             </ListView.ItemContainerStyle>
             <ListView.ItemTemplate>
                 <DataTemplate>
-                    <Grid ColumnDefinitions="70,100,80,150,80,100,*,40">
+                    <Grid ColumnDefinitions="36,70,100,80,150,80,100,*,40">
+                        <!-- 收藏 -->
+                        <Button Click="ToggleFavorite_Click" Tag="{Binding LocalPort}"
+                                Padding="4" Background="Transparent" VerticalAlignment="Center">
+                            <FontIcon Glyph="{Binding FavoriteGlyph}" FontSize="13"
+                                      Foreground="{Binding FavoriteBrush}" />
+                        </Button>
+
                         <!-- 协议 -->
-                        <Border CornerRadius="3" Padding="6,2" HorizontalAlignment="Left"
+                        <Border Grid.Column="1" CornerRadius="3" Padding="6,2" HorizontalAlignment="Left"
                                 Background="{Binding ProtocolBrush}">
                             <TextBlock Text="{Binding Protocol}" FontSize="11"
                                        Foreground="White" FontWeight="SemiBold" />
                         </Border>
 
                         <!-- 本地地址 -->
-                        <TextBlock Grid.Column="1" Text="{Binding LocalAddress}"
+                        <TextBlock Grid.Column="2" Text="{Binding LocalAddress}"
                                    FontSize="12" FontFamily="Consolas"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
 
                         <!-- 端口 -->
-                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
+                        <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4"
                                     VerticalAlignment="Center">
                             <TextBlock Text="{Binding LocalPortText}" FontSize="13"
                                        FontWeight="SemiBold" FontFamily="Consolas"
@@ -110,31 +124,31 @@
                         </StackPanel>
 
                         <!-- 远程地址 -->
-                        <TextBlock Grid.Column="3" FontSize="12" FontFamily="Consolas"
+                        <TextBlock Grid.Column="4" FontSize="12" FontFamily="Consolas"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}">
                             <Run Text="{Binding RemoteAddress}" /><Run Text=":" /><Run Text="{Binding RemotePortText}" />
                         </TextBlock>
 
                         <!-- 状态 -->
-                        <Border Grid.Column="4" CornerRadius="3" Padding="6,2"
+                        <Border Grid.Column="5" CornerRadius="3" Padding="6,2"
                                 HorizontalAlignment="Left" VerticalAlignment="Center"
                                 Background="{Binding StateBrush}">
                             <TextBlock Text="{Binding State}" FontSize="10" Foreground="White" />
                         </Border>
 
                         <!-- PID -->
-                        <TextBlock Grid.Column="5" Text="{Binding PidText}" FontSize="12"
+                        <TextBlock Grid.Column="6" Text="{Binding PidText}" FontSize="12"
                                    FontFamily="Consolas" VerticalAlignment="Center"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
 
                         <!-- 进程名 -->
-                        <TextBlock Grid.Column="6" Text="{Binding ProcessName}" FontSize="12"
+                        <TextBlock Grid.Column="7" Text="{Binding ProcessName}" FontSize="12"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                    ToolTipService.ToolTip="{Binding ProcessPath}" />
 
                         <!-- 操作 -->
-                        <Button Grid.Column="7" Click="KillProcess_Click" Tag="{Binding Pid}"
+                        <Button Grid.Column="8" Click="KillProcess_Click" Tag="{Binding Pid}"
                                 ToolTipService.ToolTip="结束进程" Padding="4" Background="Transparent"
                                 VerticalAlignment="Center">
                             <FontIcon Glyph="&#xE711;" FontSize="12"

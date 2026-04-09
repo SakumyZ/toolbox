@@ -36,6 +36,17 @@
                         <FontIcon Glyph="&#xE968;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
+                <NavigationViewItem Tag="SshConfig" Content="SSH Config 预设">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE128;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItemHeader Content="效率工具" />
+                <NavigationViewItem Tag="Reminder" Content="定时器管理">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE823;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
                 <NavigationViewItem Tag="CleanCache" Icon="Delete" Content="Clean Cache" />
             </NavigationView.MenuItems>
 

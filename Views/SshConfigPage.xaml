@@ -1,0 +1,128 @@
+<Page
+    x:Class="ToolBox.Views.SshConfigPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Loaded="Page_Loaded">
+
+    <Grid Padding="24,20,24,16" RowDefinitions="Auto,*">
+        <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,16">
+            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                <TextBlock Text="SSH Config 预设" Style="{StaticResource TitleTextBlockStyle}" />
+                <TextBlock x:Name="CountText" Text="" Style="{StaticResource CaptionTextBlockStyle}"
+                           VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <TextBlock x:Name="StatusMessage" Text="" Style="{StaticResource CaptionTextBlockStyle}"
+                           VerticalAlignment="Center" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                <Button Click="ImportCurrent_Click" Padding="10,6">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE8C8;" FontSize="12" />
+                        <TextBlock Text="导入当前 config" />
+                    </StackPanel>
+                </Button>
+                <Button Style="{StaticResource AccentButtonStyle}" Click="AddPreset_Click" Padding="10,6">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE710;" FontSize="12" />
+                        <TextBlock Text="新增预设" />
+                    </StackPanel>
+                </Button>
+                <Button Click="Refresh_Click" ToolTipService.ToolTip="刷新" Padding="8,6">
+                    <FontIcon Glyph="&#xE72C;" FontSize="14" />
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <Grid Grid.Row="1" ColumnDefinitions="360,12,*">
+            <Grid Grid.Column="0" RowDefinitions="Auto,*,Auto"
+                  Padding="12" CornerRadius="8"
+                  Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                  BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                <StackPanel Spacing="4" Margin="0,0,0,8">
+                    <TextBlock Text="预设列表" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                    <TextBlock x:Name="ConfigPathText" Text=""
+                               FontSize="12"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+
+                <ListView x:Name="PresetList" Grid.Row="1"
+                          SelectionMode="Single"
+                          SelectionChanged="PresetList_SelectionChanged"
+                          Padding="0">
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="Padding" Value="10,8" />
+                            <Setter Property="MinHeight" Value="60" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Spacing="3">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" />
+                                        <Border Background="{Binding ActiveBrush}" CornerRadius="3" Padding="6,1"
+                                                Visibility="{Binding ActiveVisibility}">
+                                            <TextBlock Text="当前生效" FontSize="10" Foreground="White" />
+                                        </Border>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding Description}" FontSize="11"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding LastUsedText}" FontSize="10"
+                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2"
+                                            VerticalAlignment="Center">
+                                    <Button Click="ActivatePreset_Click" Tag="{Binding Id}" Padding="6"
+                                            Background="Transparent" ToolTipService.ToolTip="应用预设">
+                                        <FontIcon Glyph="&#xE768;" FontSize="12" />
+                                    </Button>
+                                    <Button Click="EditPreset_Click" Tag="{Binding Id}" Padding="6"
+                                            Background="Transparent" ToolTipService.ToolTip="编辑预设">
+                                        <FontIcon Glyph="&#xE70F;" FontSize="12" />
+                                    </Button>
+                                    <Button Click="DeletePreset_Click" Tag="{Binding Id}" Padding="6"
+                                            Background="Transparent" ToolTipService.ToolTip="删除预设">
+                                        <FontIcon Glyph="&#xE74D;" FontSize="12"
+                                                  Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+
+                <TextBlock Grid.Row="2" Text="切换预设时会自动备份当前 config 到 .ssh 目录。"
+                           FontSize="11" Margin="0,8,0,0"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+            </Grid>
+
+            <Grid Grid.Column="2" RowDefinitions="Auto,*"
+                  Padding="16,12" CornerRadius="8"
+                  Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                  BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                <StackPanel Spacing="4" Margin="0,0,0,8">
+                    <TextBlock x:Name="PreviewTitle" Text="预设预览" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                    <TextBlock x:Name="PreviewMeta" Text="选择一个预设查看内容"
+                               FontSize="12"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+
+                <TextBox x:Name="PreviewContent" Grid.Row="1"
+                         IsReadOnly="True"
+                         AcceptsReturn="True"
+                         TextWrapping="NoWrap"
+                         FontFamily="Consolas"
+                         FontSize="12"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         ScrollViewer.HorizontalScrollBarVisibility="Auto" />
+            </Grid>
+        </Grid>
+    </Grid>
+</Page>
