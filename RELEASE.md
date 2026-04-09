@@ -32,6 +32,7 @@ Compress-Archive -Path .\bin\Release\net8.0-windows10.0.19041.0\win-x64\publish\
 ## GitHub Release 步骤
 
 1. 提交版本变更并推送到远端主分支。
+   - 需要当前 GitHub 账号对 `SakumyZ/toolbox` 具备 `push` 权限。
 2. 创建标签：
 
 ```powershell
@@ -43,6 +44,12 @@ git push origin v1.0.1
 
 ```powershell
 gh release create v1.0.1 .\dist\ToolBox-v1.0.1-win-x64.zip --repo SakumyZ/toolbox --title "v1.0.1" --notes "ToolBox v1.0.1 release"
+```
+
+也可以直接执行仓库内脚本：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Assets\Scripts\release.ps1 -Version v1.0.1
 ```
 
 ## 回滚说明
