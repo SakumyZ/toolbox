@@ -2,7 +2,7 @@
 
 ## 当前版本
 
-- 版本号：v1.0.1
+- 版本号：v1.0.2
 - 推荐产物：win-x64 Release 构建包
 
 ## 本地发布步骤
@@ -26,7 +26,7 @@ bin\x64\Release\net8.0-windows10.0.19041.0\win-x64
 5. 将发布目录压缩为 zip，例如：
 
 ```powershell
-Compress-Archive -Path .\bin\x64\Release\net8.0-windows10.0.19041.0\win-x64\* -DestinationPath .\dist\ToolBox-v1.0.1-win-x64.zip -Force
+Compress-Archive -Path .\bin\x64\Release\net8.0-windows10.0.19041.0\win-x64\* -DestinationPath .\dist\ToolBox-v1.0.2-win-x64.zip -Force
 ```
 
 ## 说明
@@ -40,20 +40,20 @@ Compress-Archive -Path .\bin\x64\Release\net8.0-windows10.0.19041.0\win-x64\* -D
 2. 创建标签：
 
 ```powershell
-git tag v1.0.1
-git push origin v1.0.1
+git tag v1.0.2
+git push origin v1.0.2
 ```
 
 3. 创建 Release 并上传产物：
 
 ```powershell
-gh release create v1.0.1 .\dist\ToolBox-v1.0.1-win-x64.zip --repo SakumyZ/toolbox --title "v1.0.1" --notes "ToolBox v1.0.1 release"
+gh release create v1.0.2 .\dist\ToolBox-v1.0.2-win-x64.zip --repo SakumyZ/toolbox --title "v1.0.2" --notes "ToolBox v1.0.2 release"
 ```
 
 也可以直接执行仓库内脚本：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\Assets\Scripts\release.ps1 -Version v1.0.1
+powershell -ExecutionPolicy Bypass -File .\Assets\Scripts\release.ps1 -Version v1.0.2
 ```
 
 ## 回滚说明
