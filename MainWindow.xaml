@@ -6,17 +6,20 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
-    Title="ToolBox">
+    Title="ToolBox"
+    >
 
     <Window.SystemBackdrop>
         <MicaBackdrop />
     </Window.SystemBackdrop>
 
     <Grid>
-        <NavigationView x:Name="NavView"
-                        PaneDisplayMode="Auto"
-                        SelectionChanged="NavView_SelectionChanged"
-                        Loaded="NavView_Loaded">
+        <NavigationView
+            x:Name="NavView"
+            PaneDisplayMode="Auto"
+            SelectionChanged="NavView_SelectionChanged"
+            Loaded="NavView_Loaded"
+        >
             <NavigationView.MenuItems>
                 <NavigationViewItem Tag="Dashboard" Icon="Home" Content="Dashboard" />
                 <NavigationViewItemHeader Content="开发工具" />
@@ -25,7 +28,7 @@
                         <FontIcon Glyph="&#xE943;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItemHeader Content="System Tools" />
+                <NavigationViewItemHeader Content="系统工具" />
                 <NavigationViewItem Tag="ServiceManager" Content="服务管理器">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE912;" />
@@ -39,6 +42,11 @@
                 <NavigationViewItem Tag="SshConfig" Content="SSH Config 预设">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE128;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Tag="SkillManager" Content="Skill 切换">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xF117;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItemHeader Content="效率工具" />

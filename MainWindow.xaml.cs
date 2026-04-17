@@ -116,6 +116,9 @@ namespace ToolBox
                     case "SshConfig":
                         ContentFrame.Navigate(typeof(SshConfigPage));
                         break;
+                    case "SkillManager":
+                        ContentFrame.Navigate(typeof(SkillManagerPage));
+                        break;
                     case "Reminder":
                         ContentFrame.Navigate(typeof(ReminderPage));
                         break;
