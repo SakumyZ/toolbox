@@ -5,13 +5,16 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     mc:Ignorable="d"
-    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
+    Loaded="Page_Loaded">
 
-    <Grid Padding="24">
-        <StackPanel Spacing="16">
-            <TextBlock Text="Welcome to ToolBox" Style="{StaticResource TitleTextBlockStyle}" />
-            <TextBlock Text="Select a tool from the menu to get started." Style="{StaticResource BodyTextBlockStyle}" />
-            <InfoBar Title="Status" Message="System ready." Severity="Informational" IsOpen="True" IsClosable="False" />
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel x:Name="RootPanel" Padding="24,20,24,16" Spacing="16">
+            <TextBlock Text="Dashboard" Style="{StaticResource TitleTextBlockStyle}" />
+            <TextBlock x:Name="SummaryText"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Style="{StaticResource CaptionTextBlockStyle}" />
+            <StackPanel x:Name="CardsPanel" Spacing="16" />
         </StackPanel>
-    </Grid>
+    </ScrollViewer>
 </Page>

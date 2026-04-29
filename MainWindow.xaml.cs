@@ -101,34 +101,73 @@ namespace ToolBox
             {
                 var selectedItem = (NavigationViewItem)args.SelectedItem;
                 string pageTag = (string)selectedItem.Tag;
+                NavigateToPage(pageTag);
+            }
+        }
 
-                switch (pageTag)
+        /// <summary>
+        /// 公共导航方法，供子页面跳转到其他模块。
+        /// </summary>
+        /// <param name="pageTag">目标页面的导航标签。</param>
+        public void NavigateTo(string pageTag)
+        {
+            NavigateTo(pageTag, null);
+        }
+
+        /// <summary>
+        /// 公共导航方法（带参数），供子页面跳转到其他模块并传递筛选条件。
+        /// </summary>
+        /// <param name="pageTag">目标页面的导航标签。</param>
+        /// <param name="parameter">导航参数（如端口号）。</param>
+        public void NavigateTo(string pageTag, object? parameter)
+        {
+            // 选中对应导航项
+            foreach (var item in NavView.MenuItems)
+            {
+                if (item is NavigationViewItem navItem && (string)navItem.Tag == pageTag)
                 {
-                    case "Dashboard":
-                        ContentFrame.Navigate(typeof(DashboardPage));
-                        break;
-                    case "Snippet":
-                        ContentFrame.Navigate(typeof(SnippetPage));
-                        break;
-                    case "PortViewer":
-                        ContentFrame.Navigate(typeof(PortViewerPage));
-                        break;
-                    case "SshConfig":
-                        ContentFrame.Navigate(typeof(SshConfigPage));
-                        break;
-                    case "SkillManager":
-                        ContentFrame.Navigate(typeof(SkillManagerPage));
-                        break;
-                    case "Reminder":
-                        ContentFrame.Navigate(typeof(ReminderPage));
-                        break;
-                    case "ServiceManager":
-                        ContentFrame.Navigate(typeof(ServiceManagerPage));
-                        break;
-                    case "CleanCache":
-                        ContentFrame.Navigate(typeof(CleanCachePage));
-                        break;
+                    NavView.SelectedItem = navItem;
+                    break;
                 }
+            }
+
+            NavigateToPage(pageTag, parameter);
+        }
+
+        /// <summary>
+        /// 根据 pageTag 执行 Frame 导航。
+        /// </summary>
+        private void NavigateToPage(string pageTag, object? parameter = null)
+        {
+            switch (pageTag)
+            {
+                case "Dashboard":
+                    ContentFrame.Navigate(typeof(DashboardPage));
+                    break;
+                case "Snippet":
+                    ContentFrame.Navigate(typeof(SnippetPage));
+                    break;
+                case "PortViewer":
+                    ContentFrame.Navigate(typeof(PortViewerPage), parameter);
+                    break;
+                case "SshConfig":
+                    ContentFrame.Navigate(typeof(SshConfigPage));
+                    break;
+                case "SkillManager":
+                    ContentFrame.Navigate(typeof(SkillManagerPage));
+                    break;
+                case "Reminder":
+                    ContentFrame.Navigate(typeof(ReminderPage));
+                    break;
+                case "ServiceManager":
+                    ContentFrame.Navigate(typeof(ServiceManagerPage));
+                    break;
+                case "ScriptManager":
+                    ContentFrame.Navigate(typeof(ScriptManagerPage));
+                    break;
+                case "CleanCache":
+                    ContentFrame.Navigate(typeof(CleanCachePage));
+                    break;
             }
         }
     }

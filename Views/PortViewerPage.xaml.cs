@@ -35,7 +35,25 @@ namespace ToolBox.Views
             {
                 _isLoaded = true;
                 await RefreshData();
+
+                // 检查是否有导航参数（端口号）
+                if (NavigationParameter is int port)
+                {
+                    SearchBox.Text = port.ToString();
+                    ApplyFilter();
+                }
             }
+        }
+
+        /// <summary>
+        /// 导航参数（由 Dashboard 点击收藏项时传入的端口号）
+        /// </summary>
+        private object? NavigationParameter { get; set; }
+
+        protected override void OnNavigatedTo(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
+        {
+            base.OnNavigatedTo(e);
+            NavigationParameter = e.Parameter;
         }
 
         // ========== 数据加载 ==========

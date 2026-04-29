@@ -55,8 +55,13 @@
                         <FontIcon Glyph="&#xE823;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Tag="CleanCache" Icon="Delete" Content="Clean Cache" />
-            </NavigationView.MenuItems>
+            <NavigationViewItem Tag="ScriptManager" Content="脚本管理器">
+              <NavigationViewItem.Icon>
+                <FontIcon Glyph="&#xE943;" />
+              </NavigationViewItem.Icon>
+            </NavigationViewItem>
+            <NavigationViewItem Tag="CleanCache" Icon="Delete" Content="Clean Cache" />
+          </NavigationView.MenuItems>
 
             <Frame x:Name="ContentFrame" />
         </NavigationView>

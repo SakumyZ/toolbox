@@ -30,6 +30,11 @@ namespace ToolBox
         private Window? _window;
 
         /// <summary>
+        /// 主窗口实例，供 FileOpenPicker 等需要窗口句柄的 API 使用
+        /// </summary>
+        public static Window? MainWindowInstance { get; private set; }
+
+        /// <summary>
         /// Initializes the singleton application object.  This is the first line of authored code
         /// executed, and as such is the logical equivalent of main() or WinMain().
         /// </summary>
@@ -46,13 +51,24 @@ namespace ToolBox
         /// <param name="args">Details about the launch request and process.</param>
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
-            _window = new MainWindow();
-            _window.Activate();
-            ReminderSchedulerService.Instance.Start();
-            _window.Closed += (sender, eventArgs) =>
-            {
-                ReminderSchedulerService.Instance.Dispose();
-            };
-        }
+        _window = new MainWindow();
+        MainWindowInstance = _window;
+        _window.Activate();
+        InitializeDashboardProviders();
+        ReminderSchedulerService.Instance.Start();
+        _window.Closed += (sender, eventArgs) =>
+        {
+            ReminderSchedulerService.Instance.Dispose();
+        };
     }
+
+    /// <summary>
+    /// 注册 Dashboard 卡片提供者。
+    /// </summary>
+    private static void InitializeDashboardProviders()
+    {
+        var portFavoriteProvider = new PortFavoriteCardProvider(new PortFavoriteService());
+        DashboardCardRegistry.Register(portFavoriteProvider);
+    }
+}
 }
