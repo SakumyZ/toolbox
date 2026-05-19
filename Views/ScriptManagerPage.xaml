@@ -143,6 +143,10 @@
                             <TextBox x:Name="WorkingDirectoryBox"
                                      Header="工作目录"
                                      PlaceholderText="留空则使用脚本所在目录" />
+
+                            <TextBox x:Name="CustomInterpreterPathBox"
+                                     Header="自定义解释器路径（可选）"
+                                     PlaceholderText="留空则自动检测，例如：C:\Python311\python.exe 或 uv" />
                         </StackPanel>
                     </Border>
 

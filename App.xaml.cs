@@ -1,24 +1,11 @@
 using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Runtime.InteropServices.WindowsRuntime;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Threading;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Controls.Primitives;
-using Microsoft.UI.Xaml.Data;
-using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Navigation;
-using Microsoft.UI.Xaml.Shapes;
-using Windows.ApplicationModel;
-using Windows.ApplicationModel.Activation;
-using Windows.Foundation;
-using Windows.Foundation.Collections;
 using ToolBox.Services;
-
-// To learn more about WinUI, the WinUI project structure,
-// and more about our project templates, see: http://aka.ms/winui-project-info.
+using WinRT.Interop;
 
 namespace ToolBox
 {
@@ -27,7 +14,9 @@ namespace ToolBox
     /// </summary>
     public partial class App : Application
     {
+        private const string MutexName = "Global\\ToolBox_SingleInstance_Mutex";
         private Window? _window;
+        private static Mutex? _mutex;
 
         /// <summary>
         /// 主窗口实例，供 FileOpenPicker 等需要窗口句柄的 API 使用
@@ -35,12 +24,72 @@ namespace ToolBox
         public static Window? MainWindowInstance { get; private set; }
 
         /// <summary>
-        /// Initializes the singleton application object.  This is the first line of authored code
-        /// executed, and as such is the logical equivalent of main() or WinMain().
+        /// 将指定窗口拉到前台并恢复（如果最小化）。
+        /// </summary>
+        public static void BringWindowToFront(IntPtr hWnd)
+        {
+            if (hWnd == IntPtr.Zero) return;
+            ShowWindow(hWnd, 9); // SW_RESTORE
+            SetForegroundWindow(hWnd);
+            SetWindowPos(hWnd, new IntPtr(0), 0, 0, 0, 0, 0x0001 | 0x0002);
+        }
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+        private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern int GetWindowThreadProcessId(IntPtr hWnd, out int lpdwProcessId);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool IsWindowVisible(IntPtr hWnd);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern int GetWindowText(IntPtr hWnd, [Out] char[] lpString, int nMaxCount);
+
+        /// <summary>
+        /// 查找属于另一个进程的主窗口并激活它。
+        /// </summary>
+        private static void ActivateExistingInstance()
+        {
+            int currentPid = Process.GetCurrentProcess().Id;
+
+            EnumWindows((hWnd, lParam) =>
+            {
+                if (!IsWindowVisible(hWnd)) return true;
+
+                GetWindowThreadProcessId(hWnd, out int pid);
+                if (pid == currentPid) return true;
+
+                char[] buffer = new char[256];
+                int len = GetWindowText(hWnd, buffer, 256);
+                if (len > 0)
+                {
+                    string title = new string(buffer, 0, len);
+                    if (title.Contains("ToolBox"))
+                    {
+                        BringWindowToFront(hWnd);
+                    }
+                }
+                return true;
+            }, IntPtr.Zero);
+        }
+
+        /// <summary>
+        /// Initializes the singleton application object.
         /// </summary>
         public App()
         {
-            // Register CodePagesEncodingProvider to support GB2312/GBK
             System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
             InitializeComponent();
         }
@@ -48,27 +97,43 @@ namespace ToolBox
         /// <summary>
         /// Invoked when the application is launched.
         /// </summary>
-        /// <param name="args">Details about the launch request and process.</param>
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
-        _window = new MainWindow();
-        MainWindowInstance = _window;
-        _window.Activate();
-        InitializeDashboardProviders();
-        ReminderSchedulerService.Instance.Start();
-        _window.Closed += (sender, eventArgs) =>
-        {
-            ReminderSchedulerService.Instance.Dispose();
-        };
-    }
+            // ��实例检测
+            bool createdNew;
+            _mutex = new Mutex(true, MutexName, out createdNew);
 
-    /// <summary>
-    /// 注册 Dashboard 卡片提供者。
-    /// </summary>
-    private static void InitializeDashboardProviders()
-    {
-        var portFavoriteProvider = new PortFavoriteCardProvider(new PortFavoriteService());
-        DashboardCardRegistry.Register(portFavoriteProvider);
+            if (!createdNew)
+            {
+                // 已有实例在运行，找到它的窗口并激活
+                _mutex.Dispose();
+                _mutex = null;
+                ActivateExistingInstance();
+                Environment.Exit(0);
+                return;
+            }
+
+            _window = new MainWindow();
+            MainWindowInstance = _window;
+            _window.Activate();
+            InitializeDashboardProviders();
+            ReminderSchedulerService.Instance.Start();
+
+            _window.Closed += (sender, eventArgs) =>
+            {
+                ReminderSchedulerService.Instance.Dispose();
+                _mutex?.Dispose();
+                _mutex = null;
+            };
+        }
+
+        /// <summary>
+        /// 注册 Dashboard 卡片提供者。
+        /// </summary>
+        private static void InitializeDashboardProviders()
+        {
+            var portFavoriteProvider = new PortFavoriteCardProvider(new PortFavoriteService());
+            DashboardCardRegistry.Register(portFavoriteProvider);
+        }
     }
-}
 }

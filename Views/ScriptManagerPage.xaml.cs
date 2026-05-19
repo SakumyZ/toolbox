@@ -129,6 +129,7 @@ namespace ToolBox.Views
             ScriptTypeBox.SelectedItem = script.ScriptType;
             ScriptPathBox.Text = _service.GetScriptAbsolutePath(script);
             WorkingDirectoryBox.Text = script.WorkingDirectory;
+            CustomInterpreterPathBox.Text = script.CustomInterpreterPath;
             OutputBox.Text = string.Empty;
             OpenInTerminalCheckBox.IsChecked = script.IsRunInTerminal;
 
@@ -158,6 +159,7 @@ namespace ToolBox.Views
             ScriptTypeBox.SelectedItem = ScriptTypes.Batch;
             ScriptPathBox.Text = string.Empty;
             WorkingDirectoryBox.Text = string.Empty;
+            CustomInterpreterPathBox.Text = string.Empty;
             OutputBox.Text = string.Empty;
             OpenInTerminalCheckBox.IsChecked = false;
 
@@ -173,10 +175,21 @@ namespace ToolBox.Views
         private async void BrowseScript_Click(object sender, RoutedEventArgs e)
         {
             var picker = new FileOpenPicker();
+
+            // 添加所有支持的脚本文件类型
             picker.FileTypeFilter.Add(".bat");
             picker.FileTypeFilter.Add(".cmd");
             picker.FileTypeFilter.Add(".ps1");
             picker.FileTypeFilter.Add(".sh");
+            picker.FileTypeFilter.Add(".py");
+            picker.FileTypeFilter.Add(".js");
+            picker.FileTypeFilter.Add(".mjs");
+            picker.FileTypeFilter.Add(".cjs");
+            picker.FileTypeFilter.Add(".rb");
+            picker.FileTypeFilter.Add(".pl");
+            picker.FileTypeFilter.Add(".php");
+            picker.FileTypeFilter.Add(".lua");
+            picker.FileTypeFilter.Add("*"); // 所有文件
 
             var window = App.MainWindowInstance;
             if (window != null)
@@ -192,7 +205,7 @@ namespace ToolBox.Views
 
             if (!_service.IsSupportedScriptFile(file.Path))
             {
-                StatusMessage.Text = "仅支持导入 .bat、.ps1、.sh 脚本";
+                StatusMessage.Text = "仅支持导入 .bat、.ps1、.sh、.py、.js、.rb、.pl、.php、.lua 等脚本文件";
                 return;
             }
 
@@ -643,6 +656,7 @@ namespace ToolBox.Views
             existing.Name = NameBox.Text.Trim();
             existing.Description = DescriptionBox.Text.Trim();
             existing.WorkingDirectory = WorkingDirectoryBox.Text.Trim();
+            existing.CustomInterpreterPath = CustomInterpreterPathBox.Text.Trim();
             existing.ScriptType = scriptType;
             existing.IsRunInTerminal = OpenInTerminalCheckBox.IsChecked == true;
             return existing;
@@ -824,6 +838,12 @@ namespace ToolBox.Views
             {
                 ".ps1" => ScriptTypes.PowerShell,
                 ".sh" => ScriptTypes.Shell,
+                ".py" => ScriptTypes.Python,
+                ".js" or ".mjs" or ".cjs" => ScriptTypes.Node,
+                ".rb" => ScriptTypes.Ruby,
+                ".pl" => ScriptTypes.Perl,
+                ".php" => ScriptTypes.PHP,
+                ".lua" => ScriptTypes.Lua,
                 _ => ScriptTypes.Batch
             };
         }

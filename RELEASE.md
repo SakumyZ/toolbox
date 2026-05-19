@@ -56,6 +56,81 @@ gh release create v1.0.2 .\dist\ToolBox-v1.0.2-win-x64.zip --repo SakumyZ/toolbo
 powershell -ExecutionPolicy Bypass -File .\Assets\Scripts\release.ps1 -Version v1.0.2
 ```
 
+## Release Notes 模板
+
+创建 GitHub Release 时，使用以下模板编写发布说明：
+
+```markdown
+## ✨ 新功能
+
+- **功能名称**: 功能描述
+- **功能名称**: 功能描述
+
+## 🔧 改进
+
+- 改进项描述
+- 改进项描述
+
+## 🐛 Bug 修复
+
+- 修复的问题描述
+- 修复的问题描述
+
+## 📦 安装说明
+
+1. 下载 `ToolBox-v{VERSION}-win-x64.zip`
+2. 解压到任意目录
+3. 运行 `ToolBox.exe` 启动应用
+
+## 📋 系统要求
+
+- Windows 10 版本 1809 (Build 17763) 或更高版本
+- .NET 8.0 运行时（应用已包含）
+- x64 架构处理器
+
+## 🐛 已知问题
+
+- 已知问题描述（如果有）
+
+---
+
+**完整更新日志**: https://github.com/SakumyZ/toolbox/compare/v{PREV_VERSION}...v{VERSION}
+```
+
+### 使用示例
+
+```powershell
+gh release create v1.0.3 .\dist\ToolBox-v1.0.3-win-x64.zip --repo SakumyZ/toolbox --title "ToolBox v1.0.3" --notes "## ✨ 新功能
+
+- **仪表板更新**: 优化了仪表板界面和交互体验
+- **脚本管理器**: 新增脚本管理功能，支持脚本的创建、编辑和执行
+
+## 🔧 改进
+
+- 优化了整体性能和稳定性
+- 改进了用户界面的响应速度
+
+## 📦 安装说明
+
+1. 下载 \`ToolBox-v1.0.3-win-x64.zip\`
+2. 解压到任意目录
+3. 运行 \`ToolBox.exe\` 启动应用
+
+## 📋 系统要求
+
+- Windows 10 版本 1809 (Build 17763) 或更高版本
+- .NET 8.0 运行时（应用已包含）
+- x64 架构处理器
+
+## 🐛 已知问题
+
+- 构建过程中存在 4 个编译警告（不影响功能使用）
+
+---
+
+**完整更新日志**: https://github.com/SakumyZ/toolbox/compare/v1.0.2...v1.0.3"
+```
+
 ## 回滚说明
 
 1. 如果仅本地发布失败，修复问题后重新执行 dotnet publish。

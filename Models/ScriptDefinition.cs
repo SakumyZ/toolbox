@@ -44,6 +44,11 @@ namespace ToolBox.Models
         public string WorkingDirectory { get; set; } = string.Empty;
 
         /// <summary>
+        /// 自定义解释器路径，留空时自动检测。
+        /// </summary>
+        public string CustomInterpreterPath { get; set; } = string.Empty;
+
+        /// <summary>
         /// 是否收藏。
         /// </summary>
         public bool IsFavorite { get; set; }
@@ -77,12 +82,24 @@ namespace ToolBox.Models
         public const string Batch = "Batch";
         public const string PowerShell = "PowerShell";
         public const string Shell = "Shell";
+        public const string Python = "Python";
+        public const string Node = "Node.js";
+        public const string Ruby = "Ruby";
+        public const string Perl = "Perl";
+        public const string PHP = "PHP";
+        public const string Lua = "Lua";
 
         public static readonly string[] All = new[]
         {
             Batch,
             PowerShell,
-            Shell
+            Shell,
+            Python,
+            Node,
+            Ruby,
+            Perl,
+            PHP,
+            Lua
         };
     }
 }

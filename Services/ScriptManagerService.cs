@@ -49,7 +49,7 @@ namespace ToolBox.Services
             var command = connection.CreateCommand();
             command.CommandText = @"
                 SELECT Id, Name, Description, ScriptType, FileName, RelativeScriptPath,
-                       WorkingDirectory, IsFavorite, IsRunInTerminal, CreatedAt, UpdatedAt
+                       WorkingDirectory, CustomInterpreterPath, IsFavorite, IsRunInTerminal, CreatedAt, UpdatedAt
                 FROM Scripts
                 ORDER BY IsFavorite DESC, Name ASC";
 
@@ -65,10 +65,11 @@ namespace ToolBox.Services
                     FileName = reader.GetString(4),
                     RelativeScriptPath = reader.GetString(5),
                     WorkingDirectory = reader.GetString(6),
-                    IsFavorite = reader.GetInt32(7) == 1,
-                    IsRunInTerminal = reader.GetInt32(8) == 1,
-                    CreatedAt = DateTime.Parse(reader.GetString(9), null, DateTimeStyles.RoundtripKind),
-                    UpdatedAt = DateTime.Parse(reader.GetString(10), null, DateTimeStyles.RoundtripKind)
+                    CustomInterpreterPath = reader.GetString(7),
+                    IsFavorite = reader.GetInt32(8) == 1,
+                    IsRunInTerminal = reader.GetInt32(9) == 1,
+                    CreatedAt = DateTime.Parse(reader.GetString(10), null, DateTimeStyles.RoundtripKind),
+                    UpdatedAt = DateTime.Parse(reader.GetString(11), null, DateTimeStyles.RoundtripKind)
                 });
             }
 
@@ -91,7 +92,7 @@ namespace ToolBox.Services
             var command = connection.CreateCommand();
             command.CommandText = @"
                 SELECT Id, Name, Description, ScriptType, FileName, RelativeScriptPath,
-                       WorkingDirectory, IsFavorite, IsRunInTerminal, CreatedAt, UpdatedAt
+                       WorkingDirectory, CustomInterpreterPath, IsFavorite, IsRunInTerminal, CreatedAt, UpdatedAt
                 FROM Scripts
                 WHERE Id = $id";
             command.Parameters.AddWithValue("$id", scriptId);
@@ -111,10 +112,11 @@ namespace ToolBox.Services
                 FileName = reader.GetString(4),
                 RelativeScriptPath = reader.GetString(5),
                 WorkingDirectory = reader.GetString(6),
-                IsFavorite = reader.GetInt32(7) == 1,
-                IsRunInTerminal = reader.GetInt32(8) == 1,
-                CreatedAt = DateTime.Parse(reader.GetString(9), null, DateTimeStyles.RoundtripKind),
-                UpdatedAt = DateTime.Parse(reader.GetString(10), null, DateTimeStyles.RoundtripKind),
+                CustomInterpreterPath = reader.GetString(7),
+                IsFavorite = reader.GetInt32(8) == 1,
+                IsRunInTerminal = reader.GetInt32(9) == 1,
+                CreatedAt = DateTime.Parse(reader.GetString(10), null, DateTimeStyles.RoundtripKind),
+                UpdatedAt = DateTime.Parse(reader.GetString(11), null, DateTimeStyles.RoundtripKind),
                 Parameters = GetParametersByScriptId(connection, scriptId)
             };
 
@@ -157,9 +159,9 @@ namespace ToolBox.Services
                     insertCommand.Transaction = transaction;
                     insertCommand.CommandText = @"
                         INSERT INTO Scripts (Name, Description, ScriptType, FileName, RelativeScriptPath, WorkingDirectory,
-                                             IsFavorite, IsRunInTerminal, CreatedAt, UpdatedAt)
+                                             CustomInterpreterPath, IsFavorite, IsRunInTerminal, CreatedAt, UpdatedAt)
                         VALUES ($name, $description, $scriptType, $fileName, $relativeScriptPath, $workingDirectory,
-                                $isFavorite, $isRunInTerminal, $createdAt, $updatedAt);
+                                $customInterpreterPath, $isFavorite, $isRunInTerminal, $createdAt, $updatedAt);
                         SELECT last_insert_rowid();";
                     BindScriptParameters(insertCommand, script, now, now);
                     insertCommand.Parameters.AddWithValue("$scriptType", script.ScriptType);
@@ -192,6 +194,7 @@ namespace ToolBox.Services
                         FileName = $fileName,
                         RelativeScriptPath = $relativeScriptPath,
                         WorkingDirectory = $workingDirectory,
+                        CustomInterpreterPath = $customInterpreterPath,
                         IsFavorite = $isFavorite,
                         IsRunInTerminal = $isRunInTerminal,
                         UpdatedAt = $updatedAt
@@ -200,6 +203,7 @@ namespace ToolBox.Services
                 updateCommand.Parameters.AddWithValue("$scriptType", script.ScriptType);
                 updateCommand.Parameters.AddWithValue("$fileName", script.FileName);
                 updateCommand.Parameters.AddWithValue("$relativeScriptPath", script.RelativeScriptPath);
+                updateCommand.Parameters.AddWithValue("$customInterpreterPath", script.CustomInterpreterPath);
                 updateCommand.Parameters.AddWithValue("$id", script.Id);
                 updateCommand.ExecuteNonQuery();
 
@@ -461,18 +465,137 @@ namespace ToolBox.Services
                 return string.Empty;
             }
 
+            var workingDirectory = ResolveWorkingDirectory(script, scriptPath);
             var tokens = BuildArgumentTokens(script.Parameters, parameterValues);
-            var parts = new List<string>
+            var parts = BuildCommandParts(script, scriptPath, workingDirectory, tokens);
+
+            return string.Join(" ", parts);
+        }
+
+        /// <summary>
+        /// 构建命令行各部分。
+        /// </summary>
+        private static List<string> BuildCommandParts(ScriptDefinition script, string scriptPath, string workingDirectory, List<string> tokens)
+        {
+            var parts = new List<string>();
+            var scriptType = script.ScriptType;
+            var customInterpreter = script.CustomInterpreterPath;
+
+            switch (scriptType)
             {
-                QuoteScriptInvocation(script.ScriptType, scriptPath)
-            };
+                case ScriptTypes.Batch:
+                    parts.Add(QuoteCommandPart(scriptPath));
+                    break;
+
+                case ScriptTypes.PowerShell:
+                    parts.Add("&");
+                    parts.Add(QuoteCommandPart(scriptPath));
+                    break;
+
+                case ScriptTypes.Shell:
+                    var shellExe = string.IsNullOrWhiteSpace(customInterpreter)
+                        ? ResolveShellExecutable()
+                        : customInterpreter;
+                    if (!string.IsNullOrWhiteSpace(shellExe))
+                    {
+                        parts.Add(QuoteCommandPart(shellExe));
+                    }
+                    parts.Add(QuoteCommandPart(scriptPath));
+                    break;
+
+                case ScriptTypes.Python:
+                    var pythonExe = string.IsNullOrWhiteSpace(customInterpreter)
+                        ? ResolvePythonExecutable(workingDirectory)
+                        : customInterpreter;
+
+                    if (!string.IsNullOrWhiteSpace(pythonExe))
+                    {
+                        if (pythonExe.EndsWith("uv.exe", StringComparison.OrdinalIgnoreCase) ||
+                            pythonExe.Equals("uv", StringComparison.OrdinalIgnoreCase))
+                        {
+                            parts.Add(QuoteCommandPart(pythonExe));
+                            parts.Add("run");
+                        }
+                        else
+                        {
+                            parts.Add(QuoteCommandPart(pythonExe));
+                        }
+                    }
+                    parts.Add(QuoteCommandPart(scriptPath));
+                    break;
+
+                case ScriptTypes.Node:
+                    var nodeExe = string.IsNullOrWhiteSpace(customInterpreter)
+                        ? ResolveNodeExecutable(workingDirectory)
+                        : customInterpreter;
+                    if (!string.IsNullOrWhiteSpace(nodeExe))
+                    {
+                        parts.Add(QuoteCommandPart(nodeExe));
+                    }
+                    parts.Add(QuoteCommandPart(scriptPath));
+                    break;
+
+                case ScriptTypes.Ruby:
+                    var rubyExe = string.IsNullOrWhiteSpace(customInterpreter)
+                        ? ResolveRubyExecutable(workingDirectory)
+                        : customInterpreter;
+                    if (!string.IsNullOrWhiteSpace(rubyExe))
+                    {
+                        parts.Add(QuoteCommandPart(rubyExe));
+                    }
+                    parts.Add(QuoteCommandPart(scriptPath));
+                    break;
+
+                case ScriptTypes.Perl:
+                    var perlExe = string.IsNullOrWhiteSpace(customInterpreter)
+                        ? FindExecutableFromPath("perl.exe")
+                        : customInterpreter;
+                    if (!string.IsNullOrWhiteSpace(perlExe))
+                    {
+                        parts.Add(QuoteCommandPart(perlExe));
+                    }
+                    parts.Add(QuoteCommandPart(scriptPath));
+                    break;
+
+                case ScriptTypes.PHP:
+                    var phpExe = string.IsNullOrWhiteSpace(customInterpreter)
+                        ? FindExecutableFromPath("php.exe")
+                        : customInterpreter;
+                    if (!string.IsNullOrWhiteSpace(phpExe))
+                    {
+                        parts.Add(QuoteCommandPart(phpExe));
+                    }
+                    parts.Add(QuoteCommandPart(scriptPath));
+                    break;
+
+                case ScriptTypes.Lua:
+                    var luaExe = customInterpreter;
+                    if (string.IsNullOrWhiteSpace(luaExe))
+                    {
+                        luaExe = FindExecutableFromPath("lua.exe");
+                        if (string.IsNullOrWhiteSpace(luaExe))
+                        {
+                            luaExe = FindExecutableFromPath("lua53.exe");
+                        }
+                    }
+                    if (!string.IsNullOrWhiteSpace(luaExe))
+                    {
+                        parts.Add(QuoteCommandPart(luaExe));
+                    }
+                    parts.Add(QuoteCommandPart(scriptPath));
+                    break;
+
+                default:
+                    parts.Add(QuoteCommandPart(scriptPath));
+                    break;
+            }
 
             foreach (var token in tokens)
             {
                 parts.Add(QuoteCommandPart(token));
             }
 
-            return string.Join(" ", parts);
+            return parts;
         }
 
         /// <summary>
@@ -519,6 +642,7 @@ namespace ToolBox.Services
                     FileName TEXT NOT NULL DEFAULT '',
                     RelativeScriptPath TEXT NOT NULL DEFAULT '',
                     WorkingDirectory TEXT NOT NULL DEFAULT '',
+                    CustomInterpreterPath TEXT NOT NULL DEFAULT '',
                     IsFavorite INTEGER NOT NULL DEFAULT 0,
                     IsRunInTerminal INTEGER NOT NULL DEFAULT 0,
                     CreatedAt TEXT NOT NULL,
@@ -545,6 +669,7 @@ namespace ToolBox.Services
             ";
             command.ExecuteNonQuery();
             EnsureColumnExists(connection, "Scripts", "IsRunInTerminal", "INTEGER NOT NULL DEFAULT 0");
+            EnsureColumnExists(connection, "Scripts", "CustomInterpreterPath", "TEXT NOT NULL DEFAULT ''");
         }
 
         private static void BindScriptParameters(SqliteCommand command, ScriptDefinition script, string createdAt, string updatedAt)
@@ -552,6 +677,7 @@ namespace ToolBox.Services
             command.Parameters.AddWithValue("$name", script.Name);
             command.Parameters.AddWithValue("$description", script.Description);
             command.Parameters.AddWithValue("$workingDirectory", script.WorkingDirectory ?? string.Empty);
+            command.Parameters.AddWithValue("$customInterpreterPath", script.CustomInterpreterPath ?? string.Empty);
             command.Parameters.AddWithValue("$isFavorite", script.IsFavorite ? 1 : 0);
             command.Parameters.AddWithValue("$isRunInTerminal", script.IsRunInTerminal ? 1 : 0);
             command.Parameters.AddWithValue("$createdAt", createdAt);
@@ -635,7 +761,7 @@ namespace ToolBox.Services
         {
             if (!TryResolveScriptType(sourcePath, out var scriptType))
             {
-                return (false, "仅支持导入 .bat、.ps1、.sh 脚本", string.Empty, string.Empty, string.Empty);
+                return (false, "仅支持导入 .bat、.ps1、.sh、.py、.js、.rb、.pl、.php、.lua 等脚本文件", string.Empty, string.Empty, string.Empty);
             }
 
             var scriptDirectory = Path.Combine(_scriptRootPath, scriptId.ToString(CultureInfo.InvariantCulture));
@@ -664,6 +790,26 @@ namespace ToolBox.Services
                     return true;
                 case ".sh":
                     scriptType = ScriptTypes.Shell;
+                    return true;
+                case ".py":
+                    scriptType = ScriptTypes.Python;
+                    return true;
+                case ".js":
+                case ".mjs":
+                case ".cjs":
+                    scriptType = ScriptTypes.Node;
+                    return true;
+                case ".rb":
+                    scriptType = ScriptTypes.Ruby;
+                    return true;
+                case ".pl":
+                    scriptType = ScriptTypes.Perl;
+                    return true;
+                case ".php":
+                    scriptType = ScriptTypes.PHP;
+                    return true;
+                case ".lua":
+                    scriptType = ScriptTypes.Lua;
                     return true;
                 default:
                     return false;
@@ -741,14 +887,126 @@ namespace ToolBox.Services
                     startInfo.ArgumentList.Add(scriptPath);
                     break;
                 case ScriptTypes.Shell:
-                    startInfo.FileName = ResolveShellExecutable();
-                    if (string.IsNullOrWhiteSpace(startInfo.FileName))
+                {
+                    var executable = string.IsNullOrWhiteSpace(script.CustomInterpreterPath)
+                        ? ResolveShellExecutable()
+                        : script.CustomInterpreterPath;
+
+                    if (string.IsNullOrWhiteSpace(executable))
                     {
                         return null;
                     }
 
+                    startInfo.FileName = executable;
                     startInfo.ArgumentList.Add(scriptPath);
                     break;
+                }
+                case ScriptTypes.Python:
+                {
+                    var executable = string.IsNullOrWhiteSpace(script.CustomInterpreterPath)
+                        ? ResolvePythonExecutable(workingDirectory)
+                        : script.CustomInterpreterPath;
+
+                    if (string.IsNullOrWhiteSpace(executable))
+                    {
+                        return null;
+                    }
+
+                    // 如果是 uv，使用 "uv run" 命令
+                    if (executable.EndsWith("uv.exe", StringComparison.OrdinalIgnoreCase) ||
+                        executable.Equals("uv", StringComparison.OrdinalIgnoreCase))
+                    {
+                        startInfo.FileName = executable;
+                        startInfo.ArgumentList.Add("run");
+                        startInfo.ArgumentList.Add(scriptPath);
+                    }
+                    else
+                    {
+                        startInfo.FileName = executable;
+                        startInfo.ArgumentList.Add(scriptPath);
+                    }
+                    break;
+                }
+                case ScriptTypes.Node:
+                {
+                    var executable = string.IsNullOrWhiteSpace(script.CustomInterpreterPath)
+                        ? ResolveNodeExecutable(workingDirectory)
+                        : script.CustomInterpreterPath;
+
+                    if (string.IsNullOrWhiteSpace(executable))
+                    {
+                        return null;
+                    }
+
+                    startInfo.FileName = executable;
+                    startInfo.ArgumentList.Add(scriptPath);
+                    break;
+                }
+                case ScriptTypes.Ruby:
+                {
+                    var executable = string.IsNullOrWhiteSpace(script.CustomInterpreterPath)
+                        ? ResolveRubyExecutable(workingDirectory)
+                        : script.CustomInterpreterPath;
+
+                    if (string.IsNullOrWhiteSpace(executable))
+                    {
+                        return null;
+                    }
+
+                    startInfo.FileName = executable;
+                    startInfo.ArgumentList.Add(scriptPath);
+                    break;
+                }
+                case ScriptTypes.Perl:
+                {
+                    var executable = string.IsNullOrWhiteSpace(script.CustomInterpreterPath)
+                        ? FindExecutableFromPath("perl.exe")
+                        : script.CustomInterpreterPath;
+
+                    if (string.IsNullOrWhiteSpace(executable))
+                    {
+                        return null;
+                    }
+
+                    startInfo.FileName = executable;
+                    startInfo.ArgumentList.Add(scriptPath);
+                    break;
+                }
+                case ScriptTypes.PHP:
+                {
+                    var executable = string.IsNullOrWhiteSpace(script.CustomInterpreterPath)
+                        ? FindExecutableFromPath("php.exe")
+                        : script.CustomInterpreterPath;
+
+                    if (string.IsNullOrWhiteSpace(executable))
+                    {
+                        return null;
+                    }
+
+                    startInfo.FileName = executable;
+                    startInfo.ArgumentList.Add(scriptPath);
+                    break;
+                }
+                case ScriptTypes.Lua:
+                {
+                    var executable = script.CustomInterpreterPath;
+                    if (string.IsNullOrWhiteSpace(executable))
+                    {
+                        executable = FindExecutableFromPath("lua.exe");
+                        if (string.IsNullOrWhiteSpace(executable))
+                        {
+                            executable = FindExecutableFromPath("lua53.exe");
+                        }
+                    }
+                    if (string.IsNullOrWhiteSpace(executable))
+                    {
+                        return null;
+                    }
+
+                    startInfo.FileName = executable;
+                    startInfo.ArgumentList.Add(scriptPath);
+                    break;
+                }
                 default:
                     return null;
             }
@@ -810,7 +1068,10 @@ namespace ToolBox.Services
                 }
                 case ScriptTypes.Shell:
                 {
-                    var executable = ResolveShellExecutable();
+                    var executable = string.IsNullOrWhiteSpace(script.CustomInterpreterPath)
+                        ? ResolveShellExecutable()
+                        : script.CustomInterpreterPath;
+
                     if (string.IsNullOrWhiteSpace(executable))
                     {
                         return null;
@@ -829,6 +1090,141 @@ namespace ToolBox.Services
                     }
 
                     return startInfo;
+                }
+                case ScriptTypes.Python:
+                {
+                    var executable = string.IsNullOrWhiteSpace(script.CustomInterpreterPath)
+                        ? ResolvePythonExecutable(workingDirectory)
+                        : script.CustomInterpreterPath;
+
+                    if (string.IsNullOrWhiteSpace(executable))
+                    {
+                        return null;
+                    }
+
+                    string command;
+                    // 如果是 uv，使用 "uv run" 命令
+                    if (executable.EndsWith("uv.exe", StringComparison.OrdinalIgnoreCase) ||
+                        executable.Equals("uv", StringComparison.OrdinalIgnoreCase))
+                    {
+                        command = BuildCommandLine(QuoteCommandPart(executable), new List<string> { "run", scriptPath }.Concat(tokens).ToList());
+                    }
+                    else
+                    {
+                        command = BuildCommandLine(QuoteCommandPart(executable), new List<string> { scriptPath }.Concat(tokens).ToList());
+                    }
+
+                    return new ProcessStartInfo
+                    {
+                        FileName = "cmd.exe",
+                        Arguments = $"/k {command}",
+                        WorkingDirectory = workingDirectory,
+                        UseShellExecute = true
+                    };
+                }
+                case ScriptTypes.Node:
+                {
+                    var executable = string.IsNullOrWhiteSpace(script.CustomInterpreterPath)
+                        ? ResolveNodeExecutable(workingDirectory)
+                        : script.CustomInterpreterPath;
+                    if (string.IsNullOrWhiteSpace(executable))
+                    {
+                        return null;
+                    }
+
+                    var command = BuildCommandLine(QuoteCommandPart(executable), new List<string> { scriptPath }.Concat(tokens).ToList());
+                    return new ProcessStartInfo
+                    {
+                        FileName = "cmd.exe",
+                        Arguments = $"/k {command}",
+                        WorkingDirectory = workingDirectory,
+                        UseShellExecute = true
+                    };
+                }
+                case ScriptTypes.Ruby:
+                {
+                    var executable = string.IsNullOrWhiteSpace(script.CustomInterpreterPath)
+                        ? ResolveRubyExecutable(workingDirectory)
+                        : script.CustomInterpreterPath;
+
+                    if (string.IsNullOrWhiteSpace(executable))
+                    {
+                        return null;
+                    }
+
+                    var command = BuildCommandLine(QuoteCommandPart(executable), new List<string> { scriptPath }.Concat(tokens).ToList());
+                    return new ProcessStartInfo
+                    {
+                        FileName = "cmd.exe",
+                        Arguments = $"/k {command}",
+                        WorkingDirectory = workingDirectory,
+                        UseShellExecute = true
+                    };
+                }
+                case ScriptTypes.Perl:
+                {
+                    var executable = string.IsNullOrWhiteSpace(script.CustomInterpreterPath)
+                        ? FindExecutableFromPath("perl.exe")
+                        : script.CustomInterpreterPath;
+
+                    if (string.IsNullOrWhiteSpace(executable))
+                    {
+                        return null;
+                    }
+
+                    var command = BuildCommandLine(QuoteCommandPart(executable), new List<string> { scriptPath }.Concat(tokens).ToList());
+                    return new ProcessStartInfo
+                    {
+                        FileName = "cmd.exe",
+                        Arguments = $"/k {command}",
+                        WorkingDirectory = workingDirectory,
+                        UseShellExecute = true
+                    };
+                }
+                case ScriptTypes.PHP:
+                {
+                    var executable = string.IsNullOrWhiteSpace(script.CustomInterpreterPath)
+                        ? FindExecutableFromPath("php.exe")
+                        : script.CustomInterpreterPath;
+
+                    if (string.IsNullOrWhiteSpace(executable))
+                    {
+                        return null;
+                    }
+
+                    var command = BuildCommandLine(QuoteCommandPart(executable), new List<string> { scriptPath }.Concat(tokens).ToList());
+                    return new ProcessStartInfo
+                    {
+                        FileName = "cmd.exe",
+                        Arguments = $"/k {command}",
+                        WorkingDirectory = workingDirectory,
+                        UseShellExecute = true
+                    };
+                }
+                case ScriptTypes.Lua:
+                {
+                    var executable = script.CustomInterpreterPath;
+                    if (string.IsNullOrWhiteSpace(executable))
+                    {
+                        executable = FindExecutableFromPath("lua.exe");
+                        if (string.IsNullOrWhiteSpace(executable))
+                        {
+                            executable = FindExecutableFromPath("lua53.exe");
+                        }
+                    }
+                    if (string.IsNullOrWhiteSpace(executable))
+                    {
+                        return null;
+                    }
+
+                    var command = BuildCommandLine(QuoteCommandPart(executable), new List<string> { scriptPath }.Concat(tokens).ToList());
+                    return new ProcessStartInfo
+                    {
+                        FileName = "cmd.exe",
+                        Arguments = $"/k {command}",
+                        WorkingDirectory = workingDirectory,
+                        UseShellExecute = true
+                    };
                 }
                 default:
                     return null;
@@ -1094,6 +1490,118 @@ private static bool IsBooleanControlType(string? controlType)
             }
 
             return string.Empty;
+        }
+
+        /// <summary>
+        /// 查找 Python 解释器，优先使用虚拟环境。
+        /// </summary>
+        private static string ResolvePythonExecutable(string workingDirectory)
+        {
+            // 1. 检查是否有 uv 工具（优先使用 uv run）
+            var uvPath = FindExecutableFromPath("uv.exe");
+            if (!string.IsNullOrWhiteSpace(uvPath))
+            {
+                // 检查工作目录是否有 pyproject.toml 或 .python-version
+                if (File.Exists(Path.Combine(workingDirectory, "pyproject.toml")) ||
+                    File.Exists(Path.Combine(workingDirectory, ".python-version")))
+                {
+                    return uvPath; // 返回 uv，后续会用 "uv run" 执行
+                }
+            }
+
+            // 2. 检查虚拟环境（.venv, venv, env）
+            var venvPaths = new[]
+            {
+                Path.Combine(workingDirectory, ".venv", "Scripts", "python.exe"),
+                Path.Combine(workingDirectory, "venv", "Scripts", "python.exe"),
+                Path.Combine(workingDirectory, "env", "Scripts", "python.exe")
+            };
+
+            foreach (var venvPath in venvPaths)
+            {
+                if (File.Exists(venvPath))
+                {
+                    return venvPath;
+                }
+            }
+
+            // 3. 检查 VIRTUAL_ENV 环境变量
+            var virtualEnv = Environment.GetEnvironmentVariable("VIRTUAL_ENV");
+            if (!string.IsNullOrWhiteSpace(virtualEnv))
+            {
+                var virtualEnvPython = Path.Combine(virtualEnv, "Scripts", "python.exe");
+                if (File.Exists(virtualEnvPython))
+                {
+                    return virtualEnvPython;
+                }
+            }
+
+            // 4. 使用系统 Python
+            var systemPython = FindExecutableFromPath("python.exe");
+            if (!string.IsNullOrWhiteSpace(systemPython))
+            {
+                return systemPython;
+            }
+
+            var python3 = FindExecutableFromPath("python3.exe");
+            if (!string.IsNullOrWhiteSpace(python3))
+            {
+                return python3;
+            }
+
+            return string.Empty;
+        }
+
+        /// <summary>
+        /// 查找 Node.js 解释器，优先使用项目本地的 node_modules。
+        /// </summary>
+        private static string ResolveNodeExecutable(string workingDirectory)
+        {
+            // 1. 检查是否有 package.json（Node.js 项目）
+            if (File.Exists(Path.Combine(workingDirectory, "package.json")))
+            {
+                // 检查本地 node_modules/.bin
+                var localNode = Path.Combine(workingDirectory, "node_modules", ".bin", "node.exe");
+                if (File.Exists(localNode))
+                {
+                    return localNode;
+                }
+            }
+
+            // 2. 检查 nvm（Node Version Manager）
+            var nvmPath = Environment.GetEnvironmentVariable("NVM_HOME");
+            if (!string.IsNullOrWhiteSpace(nvmPath))
+            {
+                var nvmNode = Path.Combine(nvmPath, "node.exe");
+                if (File.Exists(nvmNode))
+                {
+                    return nvmNode;
+                }
+            }
+
+            // 3. 使用系统 Node.js
+            return FindExecutableFromPath("node.exe");
+        }
+
+        /// <summary>
+        /// 查找 Ruby 解释器，支持 rbenv 等版本管理工具。
+        /// </summary>
+        private static string ResolveRubyExecutable(string workingDirectory)
+        {
+            // 1. 检查 .ruby-version 文件
+            var rubyVersionFile = Path.Combine(workingDirectory, ".ruby-version");
+            if (File.Exists(rubyVersionFile))
+            {
+                // 如果有 rbenv 或 rvm，优先使用
+                var rbenv = FindExecutableFromPath("rbenv.bat");
+                if (!string.IsNullOrWhiteSpace(rbenv))
+                {
+                    return FindExecutableFromPath("ruby.exe"); // rbenv 会自动处理版本
+                }
+            }
+
+            // 2. 使用系统 Ruby
+            return FindExecutableFromPath("ruby.exe");
         }
 
         private static void EnsureColumnExists(SqliteConnection connection, string tableName, string columnName, string columnDefinition)
