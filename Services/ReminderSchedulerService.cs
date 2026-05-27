@@ -16,11 +16,17 @@ namespace ToolBox.Services
 
         private readonly ReminderService _reminderService = new();
         private readonly NotificationService _notificationService = new();
+        private readonly ScriptManagerService _scriptManagerService = new();
         private readonly SemaphoreSlim _checkLock = new(1, 1);
         private CancellationTokenSource? _cancellationTokenSource;
         private Task? _backgroundTask;
 
         public static ReminderSchedulerService Instance => _instance.Value;
+
+        /// <summary>
+        /// 提醒状态或触发日志发生变化。
+        /// </summary>
+        public event EventHandler? RemindersChanged;
 
         private ReminderSchedulerService()
         {
@@ -94,16 +100,119 @@ namespace ToolBox.Services
                         continue;
                     }
 
-                    var success = _notificationService.ShowReminderNotification(reminder, out var errorMessage);
-                    _reminderService.RecordTrigger(
-                        reminder.Id,
-                        now,
-                        success ? "Success" : $"Failed: {errorMessage}",
-                        success);
+                    bool success = false;
+                    string? errorMessage = string.Empty;
+
+                    if (reminder.ActionType == ReminderActionTypes.Script && reminder.ScriptId.HasValue)
+                    {
+                        var script = _scriptManagerService.GetScript(reminder.ScriptId.Value);
+                        if (script != null)
+                        {
+                            var parameters = new System.Collections.Generic.Dictionary<long, string>();
+                            try
+                            {
+                                if (!string.IsNullOrWhiteSpace(reminder.ScriptParameters))
+                                {
+                                    var parsedParams = System.Text.Json.JsonSerializer.Deserialize<System.Collections.Generic.Dictionary<string, string>>(reminder.ScriptParameters);
+                                    if (parsedParams != null)
+                                    {
+                                        foreach (var p in script.Parameters)
+                                        {
+                                            if (parsedParams.TryGetValue(p.Name, out var val))
+                                            {
+                                                parameters[p.Id] = val;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            catch
+                            {
+                                // 忽略参数解析错误
+                            }
+
+                            var scriptPath = _scriptManagerService.GetScriptAbsolutePath(script);
+                            var workingDirectory = System.IO.File.Exists(scriptPath)
+                                ? System.IO.Path.GetDirectoryName(scriptPath) ?? AppContext.BaseDirectory
+                                : string.Empty;
+                            var logId = _scriptManagerService.CreateExecutionLog(
+                                script,
+                                ScriptExecutionSources.Reminder,
+                                reminder.Id,
+                                now,
+                                _scriptManagerService.BuildCommandPreview(script, scriptPath, parameters),
+                                workingDirectory,
+                                parameters);
+                            var triggerLogId = _reminderService.RecordTrigger(
+                                reminder.Id,
+                                now,
+                                "Script Running",
+                                true,
+                                logId);
+                            OnRemindersChanged();
+
+                            // 异步执行，不阻塞调度器
+                            _ = Task.Run(async () =>
+                            {
+                                var result = await _scriptManagerService.ExecuteScriptAsync(
+                                    script,
+                                    parameters,
+                                    null,
+                                    null,
+                                    ScriptExecutionSources.Reminder,
+                                    reminder.Id,
+                                    logId);
+                                _reminderService.UpdateTriggerStatus(
+                                    triggerLogId,
+                                    result.Success ? "Script Execution Success" : $"Script Failed: {result.Message}");
+                                OnRemindersChanged();
+
+                                var notifyReminder = new Reminder
+                                {
+                                    Title = result.Success ? $"脚本 [{script.Name}] 执行成功" : $"脚本 [{script.Name}] 执行失败",
+                                    Message = result.Success ? $"按计划在后台运行完毕。\n{result.Message}" : $"发生错误：\n{result.Message}",
+                                    TimeText = reminder.TimeText
+                                };
+                                _notificationService.ShowReminderNotification(notifyReminder, out _);
+                            });
+                            
+                            // 对于定时脚本，我们默认触发就是成功的（至于脚本执行是否成功在后台记录）
+                            success = true; 
+                        }
+                        else
+                        {
+                            success = false;
+                            errorMessage = "Script not found";
+                        }
+                    }
+                    else
+                    {
+                        success = _notificationService.ShowReminderNotification(reminder, out errorMessage);
+                    }
+
+                    if (reminder.ActionType != ReminderActionTypes.Script)
+                    {
+                        _reminderService.RecordTrigger(
+                            reminder.Id,
+                            now,
+                            success ? "Success" : $"Failed: {errorMessage}",
+                            success);
+                        OnRemindersChanged();
+                    }
+                    else if (!success)
+                    {
+                        _reminderService.RecordTrigger(
+                            reminder.Id,
+                            now,
+                            $"Failed: {errorMessage}",
+                            false);
+                        OnRemindersChanged();
+                    }
 
                     if (success && reminder.RecurrenceType == ReminderRecurrenceTypes.Single)
                     {
                         _reminderService.SetReminderEnabled(reminder.Id, false);
+                        OnRemindersChanged();
                     }
                 }
             }
@@ -131,10 +240,33 @@ namespace ToolBox.Services
                 return false;
             }
 
-            var scheduledAt = now.Date.Add(timeOfDay);
-            if (now < scheduledAt || scheduledAt.AddMinutes(1) <= now)
+            DateTime targetDate = now.Date;
+            bool hasExplicitDate = false;
+            if (!string.IsNullOrWhiteSpace(reminder.DateText) && DateTime.TryParse(reminder.DateText, out var parsedDate))
             {
-                return false;
+                hasExplicitDate = true;
+                targetDate = parsedDate.Date;
+            }
+
+            var scheduledAt = targetDate.Add(timeOfDay);
+            if (!hasExplicitDate && scheduledAt.AddMinutes(1) <= now)
+            {
+                scheduledAt = scheduledAt.AddDays(1);
+            }
+
+            if (hasExplicitDate)
+            {
+                if (now < scheduledAt)
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                if (now < scheduledAt || scheduledAt.AddMinutes(1) <= now)
+                {
+                    return false;
+                }
             }
 
             return !reminder.LastTriggeredAt.HasValue;
@@ -197,6 +329,11 @@ namespace ToolBox.Services
             _cancellationTokenSource?.Cancel();
             _notificationService.Unregister();
             _checkLock.Dispose();
+        }
+
+        private void OnRemindersChanged()
+        {
+            RemindersChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 }

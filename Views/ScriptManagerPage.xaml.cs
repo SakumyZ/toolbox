@@ -23,6 +23,7 @@ namespace ToolBox.Views
         private readonly ScriptManagerService _service = new();
         private readonly ObservableCollection<ScriptListItemViewModel> _scripts = new();
         private readonly ObservableCollection<ScriptParameterItemViewModel> _parameterItems = new();
+        private readonly ObservableCollection<ScriptExecutionLogItemViewModel> _executionLogs = new();
         private readonly Dictionary<long, FrameworkElement> _parameterInputMap = new();
 
         private List<ScriptDefinition> _allScripts = new();
@@ -30,7 +31,6 @@ namespace ToolBox.Views
         private long? _editingScriptId;
         private string? _pendingImportPath;
         private bool _isLoaded;
-        private bool _isCreatingNew;
         private bool _isRefreshing;
         private long _nextTemporaryParameterId = -1;
 
@@ -39,6 +39,7 @@ namespace ToolBox.Views
             InitializeComponent();
             ScriptList.ItemsSource = _scripts;
             ParameterList.ItemsSource = _parameterItems;
+            ExecutionLogList.ItemsSource = _executionLogs;
 
             foreach (var scriptType in ScriptTypes.All)
             {
@@ -120,7 +121,6 @@ namespace ToolBox.Views
         private void LoadScript(ScriptDefinition script)
         {
             _editingScriptId = script.Id;
-            _isCreatingNew = false;
             _pendingImportPath = null;
             _nextTemporaryParameterId = -1;
 
@@ -129,7 +129,7 @@ namespace ToolBox.Views
             ScriptTypeBox.SelectedItem = script.ScriptType;
             ScriptPathBox.Text = _service.GetScriptAbsolutePath(script);
             WorkingDirectoryBox.Text = script.WorkingDirectory;
-            CustomInterpreterPathBox.Text = script.CustomInterpreterPath;
+            CommandPrefixBox.Text = script.CommandPrefix;
             OutputBox.Text = string.Empty;
             OpenInTerminalCheckBox.IsChecked = script.IsRunInTerminal;
 
@@ -141,6 +141,7 @@ namespace ToolBox.Views
 
             RefreshParameterList();
             RenderRunForm();
+            RefreshExecutionLogs(script.Id);
             UpdateFolderButtonState();
             UpdateCommandPreview();
             UpdateTopActionButtons();
@@ -148,7 +149,6 @@ namespace ToolBox.Views
 
         private void AddScript_Click(object sender, RoutedEventArgs e)
         {
-            _isCreatingNew = true;
             _editingScriptId = null;
             _pendingImportPath = null;
             _nextTemporaryParameterId = -1;
@@ -159,13 +159,15 @@ namespace ToolBox.Views
             ScriptTypeBox.SelectedItem = ScriptTypes.Batch;
             ScriptPathBox.Text = string.Empty;
             WorkingDirectoryBox.Text = string.Empty;
-            CustomInterpreterPathBox.Text = string.Empty;
+            CommandPrefixBox.Text = string.Empty;
             OutputBox.Text = string.Empty;
             OpenInTerminalCheckBox.IsChecked = false;
 
             _editingParameters = new List<ScriptParameterDefinition>();
             RefreshParameterList();
             RenderRunForm();
+            _executionLogs.Clear();
+            ExecutionLogHintText.Text = "保存脚本后会显示执行历史";
             UpdateFolderButtonState();
             UpdateCommandPreview();
             UpdateTopActionButtons();
@@ -245,7 +247,6 @@ namespace ToolBox.Views
             }
 
             _editingScriptId = result.scriptId;
-            _isCreatingNew = false;
             _pendingImportPath = null;
             await RefreshDataAsync(result.message, result.scriptId);
 
@@ -371,6 +372,7 @@ namespace ToolBox.Views
                 if (terminalResult.success)
                 {
                     OutputBox.Text = $"[{DateTime.Now:HH:mm:ss}] 已在新终端中启动 {script.Name}。";
+                    RefreshExecutionLogs(script.Id);
                 }
                 return;
             }
@@ -390,6 +392,7 @@ namespace ToolBox.Views
                 }));
             OutputBox.Text = BuildExecutionOutput(script, result);
             StatusMessage.Text = result.Message;
+            RefreshExecutionLogs(script.Id);
         }
 
         private void CopyCommandPreview_Click(object sender, RoutedEventArgs e)
@@ -520,6 +523,69 @@ namespace ToolBox.Views
             ParameterHintText.Text = _parameterItems.Count == 0
                 ? "尚未配置参数"
                 : $"共 {_parameterItems.Count} 个参数";
+        }
+
+        private void RefreshExecutionLogs(long scriptId)
+        {
+            _executionLogs.Clear();
+
+            foreach (var log in _service.GetExecutionLogs(scriptId))
+            {
+                _executionLogs.Add(new ScriptExecutionLogItemViewModel(log));
+            }
+
+            ExecutionLogHintText.Text = _executionLogs.Count == 0
+                ? "暂无执行历史"
+                : $"最近 {_executionLogs.Count} 条执行记录";
+        }
+
+        private void ExecutionLogList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (ExecutionLogList.SelectedItem is not ScriptExecutionLogItemViewModel item)
+            {
+                return;
+            }
+
+            OutputBox.Text = BuildExecutionLogOutput(item.Log);
+        }
+
+        private async void ClearExecutionLogs_Click(object sender, RoutedEventArgs e)
+        {
+            if (!_editingScriptId.HasValue)
+            {
+                StatusMessage.Text = "请先选择一个脚本";
+                return;
+            }
+
+            var dialog = new ContentDialog
+            {
+                Title = "清空执行历史",
+                Content = "确定清空当前脚本已完成的执行日志吗？正在运行的记录会保留。",
+                PrimaryButtonText = "清空",
+                CloseButtonText = "取消",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = XamlRoot
+            };
+
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            {
+                return;
+            }
+
+            var deleted = _service.ClearExecutionLogs(_editingScriptId.Value);
+            RefreshExecutionLogs(_editingScriptId.Value);
+            StatusMessage.Text = $"已清空 {deleted} 条执行日志";
+        }
+
+        private void CleanupExecutionLogs_Click(object sender, RoutedEventArgs e)
+        {
+            var deleted = _service.CleanupExecutionLogs();
+            if (_editingScriptId.HasValue)
+            {
+                RefreshExecutionLogs(_editingScriptId.Value);
+            }
+
+            StatusMessage.Text = deleted == 0 ? "没有需要清理的过期日志" : $"已清理 {deleted} 条过期日志";
         }
 
         private void RenderRunForm()
@@ -656,7 +722,7 @@ namespace ToolBox.Views
             existing.Name = NameBox.Text.Trim();
             existing.Description = DescriptionBox.Text.Trim();
             existing.WorkingDirectory = WorkingDirectoryBox.Text.Trim();
-            existing.CustomInterpreterPath = CustomInterpreterPathBox.Text.Trim();
+            existing.CommandPrefix = CommandPrefixBox.Text.Trim();
             existing.ScriptType = scriptType;
             existing.IsRunInTerminal = OpenInTerminalCheckBox.IsChecked == true;
             return existing;
@@ -670,6 +736,11 @@ namespace ToolBox.Views
             }
 
             ApplyScriptFilter();
+        }
+
+        private void ScriptCommandOptions_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            UpdateCommandPreview();
         }
 
         private async void Refresh_Click(object sender, RoutedEventArgs e)
@@ -777,6 +848,7 @@ namespace ToolBox.Views
                 Description = DescriptionBox.Text.Trim(),
                 ScriptType = scriptType,
                 WorkingDirectory = WorkingDirectoryBox.Text.Trim(),
+                CommandPrefix = CommandPrefixBox.Text.Trim(),
                 Parameters = _editingParameters.Select(CloneParameter).ToList()
             };
         }
@@ -864,6 +936,54 @@ private static bool IsBooleanControlType(string? controlType)
                 $"{Environment.NewLine}--- STDERR ---{Environment.NewLine}" +
                 $"{(string.IsNullOrWhiteSpace(result.StandardError) ? "(empty)" : result.StandardError)}";
         }
+
+        private static string BuildExecutionLogOutput(ScriptExecutionLog log)
+        {
+            return
+                $"[{log.StartedAt:yyyy-MM-dd HH:mm:ss}] 来源：{ResolveLogSource(log.Source)} 状态：{ResolveLogStatus(log.Status)}{Environment.NewLine}" +
+                $"[{(log.FinishedAt.HasValue ? log.FinishedAt.Value.ToString("yyyy-MM-dd HH:mm:ss") : "运行中")}] {log.Message}{Environment.NewLine}" +
+                $"ExitCode: {(log.ExitCode.HasValue ? log.ExitCode.Value.ToString() : "-")}{Environment.NewLine}" +
+                $"耗时: {FormatDuration(log.DurationMs)}{Environment.NewLine}" +
+                $"{Environment.NewLine}--- COMMAND ---{Environment.NewLine}" +
+                $"{(string.IsNullOrWhiteSpace(log.CommandPreview) ? "(empty)" : log.CommandPreview)}{Environment.NewLine}" +
+                $"{Environment.NewLine}--- WORKING DIRECTORY ---{Environment.NewLine}" +
+                $"{(string.IsNullOrWhiteSpace(log.WorkingDirectory) ? "(empty)" : log.WorkingDirectory)}{Environment.NewLine}" +
+                $"{Environment.NewLine}--- PARAMETERS ---{Environment.NewLine}" +
+                $"{(string.IsNullOrWhiteSpace(log.ParameterSnapshotJson) ? "[]" : log.ParameterSnapshotJson)}{Environment.NewLine}" +
+                $"{Environment.NewLine}--- STDOUT ---{Environment.NewLine}" +
+                $"{(string.IsNullOrWhiteSpace(log.StandardOutput) ? "(empty)" : log.StandardOutput)}{Environment.NewLine}" +
+                $"{Environment.NewLine}--- STDERR ---{Environment.NewLine}" +
+                $"{(string.IsNullOrWhiteSpace(log.StandardError) ? "(empty)" : log.StandardError)}";
+        }
+
+        private static string ResolveLogSource(string source)
+        {
+            return source == ScriptExecutionSources.Reminder ? "定时器" : "手动";
+        }
+
+        private static string ResolveLogStatus(string status)
+        {
+            return status switch
+            {
+                ScriptExecutionStatuses.Running => "运行中",
+                ScriptExecutionStatuses.Success => "成功",
+                ScriptExecutionStatuses.Failed => "失败",
+                ScriptExecutionStatuses.Launched => "已启动",
+                _ => status
+            };
+        }
+
+        private static string FormatDuration(long? durationMs)
+        {
+            if (!durationMs.HasValue)
+            {
+                return "-";
+            }
+
+            return durationMs.Value < 1000
+                ? $"{durationMs.Value} ms"
+                : $"{durationMs.Value / 1000.0:F1} s";
+        }
     }
 
     /// <summary>
@@ -902,5 +1022,33 @@ private static bool IsBooleanControlType(string? controlType)
         public string SecondaryText => string.IsNullOrWhiteSpace(Parameter.ArgumentName)
             ? $"内部名：{Parameter.Name}"
             : $"{Parameter.ArgumentName} | {Parameter.Name}";
+    }
+
+    /// <summary>
+    /// 脚本执行日志展示模型。
+    /// </summary>
+    public class ScriptExecutionLogItemViewModel
+    {
+        public ScriptExecutionLogItemViewModel(ScriptExecutionLog log)
+        {
+            Log = log;
+        }
+
+        public ScriptExecutionLog Log { get; }
+        public string StartedAtText => Log.StartedAt.ToString("MM-dd HH:mm:ss");
+        public string SourceText => Log.Source == ScriptExecutionSources.Reminder ? "定时器" : "手动";
+        public string StatusText => Log.Status switch
+        {
+            ScriptExecutionStatuses.Running => "运行中",
+            ScriptExecutionStatuses.Success => "成功",
+            ScriptExecutionStatuses.Failed => "失败",
+            ScriptExecutionStatuses.Launched => "已启动",
+            _ => Log.Status
+        };
+        public string DurationText => Log.DurationMs.HasValue
+            ? (Log.DurationMs.Value < 1000 ? $"{Log.DurationMs.Value} ms" : $"{Log.DurationMs.Value / 1000.0:F1} s")
+            : "-";
+        public string ExitCodeText => Log.ExitCode.HasValue ? Log.ExitCode.Value.ToString() : "-";
+        public string Message => string.IsNullOrWhiteSpace(Log.Message) ? "-" : Log.Message;
     }
 }

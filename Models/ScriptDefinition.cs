@@ -44,9 +44,9 @@ namespace ToolBox.Models
         public string WorkingDirectory { get; set; } = string.Empty;
 
         /// <summary>
-        /// 自定义解释器路径，留空时自动检测。
+        /// 自定义命令前缀，留空时按脚本类型自动检测默认运行器。
         /// </summary>
-        public string CustomInterpreterPath { get; set; } = string.Empty;
+        public string CommandPrefix { get; set; } = string.Empty;
 
         /// <summary>
         /// 是否收藏。

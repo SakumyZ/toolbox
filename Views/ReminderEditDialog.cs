@@ -12,14 +12,21 @@ namespace ToolBox.Views
     public sealed class ReminderEditDialog : ContentDialog
     {
         private readonly ReminderService _reminderService = new();
+        private readonly ScriptManagerService _scriptManagerService = new();
         private readonly Reminder? _editingReminder;
+        private readonly System.Collections.Generic.List<ScriptDefinition> _scripts;
+
+        private ComboBox _actionTypeCombo = null!;
+        private ComboBox _scriptCombo = null!;
 
         private ComboBox _categoryCombo = null!;
         private ComboBox _recurrenceCombo = null!;
         private TextBox _titleBox = null!;
         private TextBox _messageBox = null!;
         private NumberBox _intervalBox = null!;
+        private CalendarDatePicker _datePicker = null!;
         private TimePicker _timePicker = null!;
+        private StackPanel _timePanel = null!;
         private NumberBox _dayOfMonthBox = null!;
         private TextBlock _timeHintText = null!;
         private ToggleSwitch _enabledSwitch = null!;
@@ -27,12 +34,13 @@ namespace ToolBox.Views
         public ReminderEditDialog(Reminder? reminder = null)
         {
             _editingReminder = reminder;
+            _scripts = _scriptManagerService.GetAllScripts();
             InitializeDialog();
         }
 
         private void InitializeDialog()
         {
-            Title = _editingReminder == null ? "新增提醒" : "编辑提醒";
+            Title = _editingReminder == null ? "新增定时器" : "编辑定时器";
             PrimaryButtonText = "保存";
             CloseButtonText = "取消";
             DefaultButton = ContentDialogButton.Primary;
@@ -44,6 +52,17 @@ namespace ToolBox.Views
                 MinWidth = 420
             };
 
+            _actionTypeCombo = new ComboBox
+            {
+                Header = "任务类型"
+            };
+            foreach (var actionType in ReminderActionTypes.All)
+            {
+                _actionTypeCombo.Items.Add(actionType);
+            }
+            _actionTypeCombo.SelectionChanged += ActionTypeCombo_SelectionChanged;
+            panel.Children.Add(_actionTypeCombo);
+
             _categoryCombo = new ComboBox
             {
                 Header = "提醒类型"
@@ -54,6 +73,16 @@ namespace ToolBox.Views
             }
             _categoryCombo.SelectionChanged += CategoryCombo_SelectionChanged;
             panel.Children.Add(_categoryCombo);
+
+            _scriptCombo = new ComboBox
+            {
+                Header = "选择脚本",
+                DisplayMemberPath = "Name",
+                SelectedValuePath = "Id",
+                ItemsSource = _scripts,
+                Visibility = Visibility.Collapsed
+            };
+            panel.Children.Add(_scriptCombo);
 
             _recurrenceCombo = new ComboBox
             {
@@ -94,12 +123,36 @@ namespace ToolBox.Views
             };
             panel.Children.Add(_intervalBox);
 
+            _datePicker = new CalendarDatePicker
+            {
+                Header = "提醒日期 (选填)",
+                PlaceholderText = "留空则指今天/明天",
+                Visibility = Visibility.Collapsed
+            };
+            panel.Children.Add(_datePicker);
+
             _timePicker = new TimePicker
             {
                 Header = "提醒时间",
-                ClockIdentifier = "24HourClock"
+                ClockIdentifier = "24HourClock",
+                VerticalAlignment = VerticalAlignment.Bottom
             };
-            panel.Children.Add(_timePicker);
+
+            var setNowButton = new Button
+            {
+                Content = "当前时间",
+                VerticalAlignment = VerticalAlignment.Bottom
+            };
+            setNowButton.Click += SetNowButton_Click;
+
+            _timePanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 12
+            };
+            _timePanel.Children.Add(_timePicker);
+            _timePanel.Children.Add(setNowButton);
+            panel.Children.Add(_timePanel);
 
             _dayOfMonthBox = new NumberBox
             {
@@ -137,7 +190,12 @@ namespace ToolBox.Views
         {
             if (_editingReminder != null)
             {
+                _actionTypeCombo.SelectedItem = _editingReminder.ActionType;
                 _categoryCombo.SelectedItem = _editingReminder.Category;
+                if (_editingReminder.ActionType == ReminderActionTypes.Script && _editingReminder.ScriptId.HasValue)
+                {
+                    _scriptCombo.SelectedValue = _editingReminder.ScriptId.Value;
+                }
                 _recurrenceCombo.SelectedItem = _editingReminder.RecurrenceType;
                 _titleBox.Text = _editingReminder.Title;
                 _messageBox.Text = _editingReminder.Message;
@@ -147,18 +205,50 @@ namespace ToolBox.Views
                 _timePicker.Time = TimeSpan.TryParse(_editingReminder.TimeText, out var time)
                     ? time
                     : new TimeSpan(9, 0, 0);
+                if (!string.IsNullOrWhiteSpace(_editingReminder.DateText) && DateTime.TryParse(_editingReminder.DateText, out var parsedDate))
+                {
+                    _datePicker.Date = parsedDate;
+                }
                 UpdateFrequencyFields();
                 return;
             }
 
+            _actionTypeCombo.SelectedItem = ReminderActionTypes.Notification;
             _categoryCombo.SelectedItem = ReminderPresets.Water;
             _recurrenceCombo.SelectedItem = ReminderRecurrenceTypes.Single;
+            _datePicker.Date = null;
             _timePicker.Time = new TimeSpan(10, 0, 0);
             _intervalBox.Value = 60;
             _dayOfMonthBox.Value = 1;
             _enabledSwitch.IsOn = true;
             ApplyPreset(ReminderPresets.Water, force: true);
             UpdateFrequencyFields();
+            UpdateActionTypeFields();
+        }
+
+        private void ActionTypeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            UpdateActionTypeFields();
+        }
+
+        private void UpdateActionTypeFields()
+        {
+            var actionType = _actionTypeCombo.SelectedItem as string ?? ReminderActionTypes.Notification;
+            var isScript = actionType == ReminderActionTypes.Script;
+
+            _categoryCombo.Visibility = isScript ? Visibility.Collapsed : Visibility.Visible;
+            _messageBox.Visibility = isScript ? Visibility.Collapsed : Visibility.Visible;
+            _scriptCombo.Visibility = isScript ? Visibility.Visible : Visibility.Collapsed;
+
+            _titleBox.Header = isScript ? "任务名称" : "通知标题";
+            if (isScript)
+            {
+                _titleBox.PlaceholderText = "例如：备份数据库";
+            }
+            else
+            {
+                _titleBox.PlaceholderText = "例如：喝水时间到了";
+            }
         }
 
         private void CategoryCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -194,7 +284,10 @@ namespace ToolBox.Views
             _intervalBox.Visibility = recurrenceType == ReminderRecurrenceTypes.Interval
                 ? Visibility.Visible
                 : Visibility.Collapsed;
-            _timePicker.Visibility = recurrenceType == ReminderRecurrenceTypes.Interval
+            _datePicker.Visibility = recurrenceType == ReminderRecurrenceTypes.Single
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+            _timePanel.Visibility = recurrenceType == ReminderRecurrenceTypes.Interval
                 ? Visibility.Collapsed
                 : Visibility.Visible;
             _dayOfMonthBox.Visibility = recurrenceType == ReminderRecurrenceTypes.Monthly
@@ -212,8 +305,12 @@ namespace ToolBox.Views
 
         private void OnPrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
         {
-            if (_categoryCombo.SelectedItem is not string category)
+            var actionType = _actionTypeCombo.SelectedItem as string ?? ReminderActionTypes.Notification;
+            var category = _categoryCombo.SelectedItem as string ?? ReminderPresets.Custom;
+
+            if (actionType == ReminderActionTypes.Script && _scriptCombo.SelectedValue == null)
             {
+                _scriptCombo.Header = "选择脚本 (必填)";
                 args.Cancel = true;
                 return;
             }
@@ -232,11 +329,16 @@ namespace ToolBox.Views
             }
 
             var reminder = _editingReminder ?? new Reminder();
-            reminder.Category = category;
+            reminder.ActionType = actionType;
+            reminder.Category = actionType == ReminderActionTypes.Script ? "执行脚本" : category;
+            reminder.ScriptId = actionType == ReminderActionTypes.Script ? (long?)_scriptCombo.SelectedValue : null;
             reminder.Title = _titleBox.Text.Trim();
             reminder.Message = _messageBox.Text.Trim();
             reminder.RecurrenceType = recurrenceType;
             reminder.TimeText = _timePicker.Time.ToString(@"hh\:mm");
+            reminder.DateText = recurrenceType == ReminderRecurrenceTypes.Single && _datePicker.Date.HasValue
+                ? _datePicker.Date.Value.ToString("yyyy-MM-dd")
+                : string.Empty;
             reminder.IntervalMinutes = (int)Math.Round(_intervalBox.Value);
             reminder.DayOfMonth = (int)Math.Round(_dayOfMonthBox.Value);
             reminder.IsEnabled = _enabledSwitch.IsOn;
@@ -265,6 +367,12 @@ namespace ToolBox.Views
             }
 
             _reminderService.SaveReminder(reminder);
+        }
+
+        private void SetNowButton_Click(object sender, RoutedEventArgs e)
+        {
+            var now = DateTime.Now.TimeOfDay;
+            _timePicker.Time = new TimeSpan(now.Hours, now.Minutes, 0);
         }
     }
 }

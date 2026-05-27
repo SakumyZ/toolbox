@@ -52,6 +52,7 @@ namespace ToolBox.Services
                     ReminderId INTEGER NOT NULL,
                     TriggeredAt TEXT NOT NULL,
                     Status TEXT NOT NULL DEFAULT 'Success',
+                    ScriptExecutionLogId INTEGER NULL,
                     FOREIGN KEY (ReminderId) REFERENCES Reminders(Id) ON DELETE CASCADE
                 );
 
@@ -64,6 +65,11 @@ namespace ToolBox.Services
             EnsureColumnExists(connection, "Reminders", "RecurrenceType", "TEXT NOT NULL DEFAULT '单次'");
             EnsureColumnExists(connection, "Reminders", "IntervalMinutes", "INTEGER NOT NULL DEFAULT 0");
             EnsureColumnExists(connection, "Reminders", "DayOfMonth", "INTEGER NOT NULL DEFAULT 1");
+            EnsureColumnExists(connection, "Reminders", "ActionType", "TEXT NOT NULL DEFAULT '通知提醒'");
+            EnsureColumnExists(connection, "Reminders", "ScriptId", "INTEGER NULL");
+            EnsureColumnExists(connection, "Reminders", "ScriptParameters", "TEXT NOT NULL DEFAULT ''");
+            EnsureColumnExists(connection, "Reminders", "DateText", "TEXT NOT NULL DEFAULT ''");
+            EnsureColumnExists(connection, "ReminderTriggerLogs", "ScriptExecutionLogId", "INTEGER NULL");
         }
 
         /// <summary>
@@ -78,7 +84,7 @@ namespace ToolBox.Services
             var command = connection.CreateCommand();
             command.CommandText = @"
                 SELECT Id, Category, Title, Message, TimeText, RecurrenceType, IntervalMinutes, DayOfMonth,
-                       IsEnabled, LastTriggeredAt, CreatedAt, UpdatedAt
+                       IsEnabled, LastTriggeredAt, CreatedAt, UpdatedAt, ActionType, ScriptId, ScriptParameters, DateText
                 FROM Reminders
                 ORDER BY IsEnabled DESC, TimeText ASC, Title ASC";
 
@@ -98,7 +104,11 @@ namespace ToolBox.Services
                     IsEnabled = reader.GetInt32(8) == 1,
                     LastTriggeredAt = ParseNullableDateTime(reader.IsDBNull(9) ? null : reader.GetString(9)),
                     CreatedAt = DateTime.Parse(reader.GetString(10), null, DateTimeStyles.RoundtripKind),
-                    UpdatedAt = DateTime.Parse(reader.GetString(11), null, DateTimeStyles.RoundtripKind)
+                    UpdatedAt = DateTime.Parse(reader.GetString(11), null, DateTimeStyles.RoundtripKind),
+                    ActionType = reader.GetString(12),
+                    ScriptId = reader.IsDBNull(13) ? null : reader.GetInt64(13),
+                    ScriptParameters = reader.GetString(14),
+                    DateText = reader.GetString(15)
                 });
             }
 
@@ -116,7 +126,7 @@ namespace ToolBox.Services
             var command = connection.CreateCommand();
             command.CommandText = @"
                 SELECT Id, Category, Title, Message, TimeText, RecurrenceType, IntervalMinutes, DayOfMonth,
-                       IsEnabled, LastTriggeredAt, CreatedAt, UpdatedAt
+                       IsEnabled, LastTriggeredAt, CreatedAt, UpdatedAt, ActionType, ScriptId, ScriptParameters, DateText
                 FROM Reminders
                 WHERE Id = $id";
             command.Parameters.AddWithValue("$id", reminderId);
@@ -140,7 +150,11 @@ namespace ToolBox.Services
                 IsEnabled = reader.GetInt32(8) == 1,
                 LastTriggeredAt = ParseNullableDateTime(reader.IsDBNull(9) ? null : reader.GetString(9)),
                 CreatedAt = DateTime.Parse(reader.GetString(10), null, DateTimeStyles.RoundtripKind),
-                UpdatedAt = DateTime.Parse(reader.GetString(11), null, DateTimeStyles.RoundtripKind)
+                UpdatedAt = DateTime.Parse(reader.GetString(11), null, DateTimeStyles.RoundtripKind),
+                ActionType = reader.GetString(12),
+                ScriptId = reader.IsDBNull(13) ? null : reader.GetInt64(13),
+                ScriptParameters = reader.GetString(14),
+                DateText = reader.GetString(15)
             };
         }
 
@@ -158,9 +172,9 @@ namespace ToolBox.Services
                 var insertCommand = connection.CreateCommand();
                 insertCommand.CommandText = @"
                     INSERT INTO Reminders (Category, Title, Message, TimeText, RecurrenceType, IntervalMinutes, DayOfMonth,
-                                           IsEnabled, LastTriggeredAt, CreatedAt, UpdatedAt)
+                                           IsEnabled, LastTriggeredAt, CreatedAt, UpdatedAt, ActionType, ScriptId, ScriptParameters, DateText)
                     VALUES ($category, $title, $message, $timeText, $recurrenceType, $intervalMinutes, $dayOfMonth,
-                            $isEnabled, $lastTriggeredAt, $createdAt, $updatedAt);
+                            $isEnabled, $lastTriggeredAt, $createdAt, $updatedAt, $actionType, $scriptId, $scriptParameters, $dateText);
                     SELECT last_insert_rowid();";
                 BindReminderParameters(insertCommand, reminder, now, now);
                 reminder.Id = (long)insertCommand.ExecuteScalar()!;
@@ -179,7 +193,11 @@ namespace ToolBox.Services
                     DayOfMonth = $dayOfMonth,
                     IsEnabled = $isEnabled,
                     LastTriggeredAt = $lastTriggeredAt,
-                    UpdatedAt = $updatedAt
+                    UpdatedAt = $updatedAt,
+                    ActionType = $actionType,
+                    ScriptId = $scriptId,
+                    ScriptParameters = $scriptParameters,
+                    DateText = $dateText
                 WHERE Id = $id";
             BindReminderParameters(updateCommand, reminder, reminder.CreatedAt == default ? now : reminder.CreatedAt.ToString("o"), now);
             updateCommand.Parameters.AddWithValue("$id", reminder.Id);
@@ -228,23 +246,32 @@ namespace ToolBox.Services
         /// <summary>
         /// 记录提醒触发结果
         /// </summary>
-        public void RecordTrigger(long reminderId, DateTime triggeredAt, string status, bool updateLastTriggeredAt)
+        public long RecordTrigger(
+            long reminderId,
+            DateTime triggeredAt,
+            string status,
+            bool updateLastTriggeredAt,
+            long? scriptExecutionLogId = null)
         {
             using var connection = new SqliteConnection(_connectionString);
             connection.Open();
 
             var insertLog = connection.CreateCommand();
             insertLog.CommandText = @"
-                INSERT INTO ReminderTriggerLogs (ReminderId, TriggeredAt, Status)
-                VALUES ($reminderId, $triggeredAt, $status)";
+                INSERT INTO ReminderTriggerLogs (ReminderId, TriggeredAt, Status, ScriptExecutionLogId)
+                VALUES ($reminderId, $triggeredAt, $status, $scriptExecutionLogId);
+                SELECT last_insert_rowid();";
             insertLog.Parameters.AddWithValue("$reminderId", reminderId);
             insertLog.Parameters.AddWithValue("$triggeredAt", triggeredAt.ToString("o"));
             insertLog.Parameters.AddWithValue("$status", status);
-            insertLog.ExecuteNonQuery();
+            insertLog.Parameters.AddWithValue(
+                "$scriptExecutionLogId",
+                scriptExecutionLogId.HasValue ? (object)scriptExecutionLogId.Value : DBNull.Value);
+            var triggerLogId = (long)insertLog.ExecuteScalar()!;
 
             if (!updateLastTriggeredAt)
             {
-                return;
+                return triggerLogId;
             }
 
             var updateReminder = connection.CreateCommand();
@@ -256,6 +283,25 @@ namespace ToolBox.Services
             updateReminder.Parameters.AddWithValue("$updatedAt", DateTime.Now.ToString("o"));
             updateReminder.Parameters.AddWithValue("$id", reminderId);
             updateReminder.ExecuteNonQuery();
+            return triggerLogId;
+        }
+
+        /// <summary>
+        /// 更新提醒触发结果。
+        /// </summary>
+        public void UpdateTriggerStatus(long triggerLogId, string status)
+        {
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
+
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+                UPDATE ReminderTriggerLogs
+                SET Status = $status
+                WHERE Id = $id";
+            command.Parameters.AddWithValue("$status", status);
+            command.Parameters.AddWithValue("$id", triggerLogId);
+            command.ExecuteNonQuery();
         }
 
         private static DateTime? ParseNullableDateTime(string? value)
@@ -283,6 +329,10 @@ namespace ToolBox.Services
             command.Parameters.AddWithValue("$lastTriggeredAt", reminder.LastTriggeredAt?.ToString("o") ?? (object)DBNull.Value);
             command.Parameters.AddWithValue("$createdAt", createdAt);
             command.Parameters.AddWithValue("$updatedAt", updatedAt);
+            command.Parameters.AddWithValue("$actionType", reminder.ActionType);
+            command.Parameters.AddWithValue("$scriptId", reminder.ScriptId.HasValue ? (object)reminder.ScriptId.Value : DBNull.Value);
+            command.Parameters.AddWithValue("$scriptParameters", reminder.ScriptParameters);
+            command.Parameters.AddWithValue("$dateText", reminder.DateText);
         }
 
         private static void EnsureColumnExists(SqliteConnection connection, string tableName, string columnName, string columnDefinition)

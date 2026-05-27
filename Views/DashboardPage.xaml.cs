@@ -3,12 +3,19 @@ using System.Linq;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using ToolBox.Models;
 using ToolBox.Services;
+using Windows.UI;
 
 namespace ToolBox.Views
 {
     public sealed partial class DashboardPage : Page
     {
+        private const int MaxVisibleReminderRows = 5;
+
+        private readonly ReminderService _reminderService = new();
+        private bool _isSubscribed;
+
         public DashboardPage()
         {
             InitializeComponent();
@@ -17,10 +24,37 @@ namespace ToolBox.Views
         private async void Page_Loaded(object sender, RoutedEventArgs e)
         {
             await LoadCardsAsync();
+            if (_isSubscribed)
+            {
+                return;
+            }
+
             DashboardCardRegistry.ProvidersChanged += OnProvidersChanged;
+            ReminderSchedulerService.Instance.RemindersChanged += OnRemindersChanged;
+            _isSubscribed = true;
+        }
+
+        private void Page_Unloaded(object sender, RoutedEventArgs e)
+        {
+            if (!_isSubscribed)
+            {
+                return;
+            }
+
+            DashboardCardRegistry.ProvidersChanged -= OnProvidersChanged;
+            ReminderSchedulerService.Instance.RemindersChanged -= OnRemindersChanged;
+            _isSubscribed = false;
         }
 
         private void OnProvidersChanged(object? sender, EventArgs e)
+        {
+            DispatcherQueue.TryEnqueue(async () =>
+            {
+                await LoadCardsAsync();
+            });
+        }
+
+        private void OnRemindersChanged(object? sender, EventArgs e)
         {
             DispatcherQueue.TryEnqueue(async () =>
             {
@@ -33,13 +67,11 @@ namespace ToolBox.Views
             CardsPanel.Children.Clear();
 
             var providers = DashboardCardRegistry.GetAll();
-            if (providers.Count == 0)
-            {
-                SummaryText.Text = "暂无收藏模块注册";
-                return;
-            }
-
+            var reminders = _reminderService.GetAllReminders();
+            var enabledReminderCount = reminders.Count(reminder => reminder.IsEnabled);
             int totalFavorites = 0;
+
+            CardsPanel.Children.Add(BuildReminderCard(reminders));
 
             foreach (var provider in providers)
             {
@@ -99,75 +131,9 @@ namespace ToolBox.Views
 
                 cardContent.Children.Add(titleRow);
 
-                // 收藏项列表
                 if (favorites.Count > 0)
                 {
-                    foreach (var fav in favorites)
-                    {
-                        var favButton = new Button
-                        {
-                            HorizontalAlignment = HorizontalAlignment.Stretch,
-                            HorizontalContentAlignment = HorizontalAlignment.Left,
-                            Padding = new Thickness(12, 8, 12, 8),
-                            Margin = new Thickness(0, 0, 0, 4),
-                            Tag = new NavTarget(fav.NavigationTag, fav.NavigationParameter)
-                        };
-
-                        // 收藏项内容：标题行 + 分类行
-                        var itemContent = new StackPanel { Spacing = 4 };
-
-                        // 第一行：标题 + 状态 tag
-                        var titleRow2 = new StackPanel
-                        {
-                            Orientation = Orientation.Horizontal,
-                            Spacing = 8
-                        };
-                        titleRow2.Children.Add(new TextBlock
-                        {
-                            Text = fav.Title,
-                            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-                            VerticalAlignment = VerticalAlignment.Center,
-                            TextTrimming = TextTrimming.CharacterEllipsis
-                        });
-
-                        // 状态 tag（与 PortViewer 对齐的 badge 样式）
-                        if (!string.IsNullOrEmpty(fav.StatusText))
-                        {
-                            var statusBorder = new Border
-                            {
-                                CornerRadius = new CornerRadius(3),
-                                Padding = new Thickness(6, 2, 6, 2),
-                                VerticalAlignment = VerticalAlignment.Center,
-                                Background = fav.StatusBrush ??
-                                    (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
-                            };
-                            statusBorder.Child = new TextBlock
-                            {
-                                Text = fav.StatusText,
-                                FontSize = 10,
-                                Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 255, 255))
-                            };
-                            titleRow2.Children.Add(statusBorder);
-                        }
-
-                        itemContent.Children.Add(titleRow2);
-
-                        // 第二行：分类文本
-                        if (!string.IsNullOrEmpty(fav.TypeText))
-                        {
-                            itemContent.Children.Add(new TextBlock
-                            {
-                                Text = fav.TypeText,
-                                FontSize = 12,
-                                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
-                                TextTrimming = TextTrimming.CharacterEllipsis
-                            });
-                        }
-
-                        favButton.Content = itemContent;
-                        favButton.Click += FavoriteItem_Click;
-                        cardContent.Children.Add(favButton);
-                    }
+                    cardContent.Children.Add(BuildFavoriteCardsGrid(favorites));
                 }
                 else
                 {
@@ -194,13 +160,343 @@ namespace ToolBox.Views
                 CardsPanel.Children.Add(card);
             }
 
-            SummaryText.Text = $"共 {providers.Count} 个模块，{totalFavorites} 项收藏";
+            SummaryText.Text = $"运行中定时器 {enabledReminderCount} 个，收藏模块 {providers.Count} 个，收藏 {totalFavorites} 项";
+        }
+
+        private UIElement BuildReminderCard(System.Collections.Generic.IReadOnlyList<Reminder> reminders)
+        {
+            var enabledReminders = reminders
+                .Where(reminder => reminder.IsEnabled)
+                .OrderBy(reminder => reminder.GetNextTriggerTime())
+                .ThenBy(reminder => reminder.Title)
+                .Take(MaxVisibleReminderRows)
+                .ToList();
+            var card = new Border
+            {
+                Background = (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"],
+                BorderBrush = (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"],
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(16)
+            };
+
+            var content = new StackPanel { Spacing = 10 };
+            content.Children.Add(BuildReminderHeader(reminders.Count, reminders.Count(reminder => reminder.IsEnabled)));
+
+            if (enabledReminders.Count > 0)
+            {
+                content.Children.Add(BuildReminderCardsGrid(enabledReminders));
+            }
+            else
+            {
+                content.Children.Add(new TextBlock
+                {
+                    Text = "暂无运行中的定时器",
+                    Foreground = (Brush)Application.Current.Resources["TextFillColorTertiaryBrush"],
+                    FontSize = 12
+                });
+            }
+
+            var manageButton = new HyperlinkButton
+            {
+                Content = "管理全部定时器 →",
+                Tag = "Reminder",
+                Margin = new Thickness(0, 4, 0, 0)
+            };
+            manageButton.Click += ViewAll_Click;
+            content.Children.Add(manageButton);
+
+            card.Child = content;
+            return card;
+        }
+
+        private UIElement BuildFavoriteCardsGrid(System.Collections.Generic.IReadOnlyList<DashboardFavoriteItem> favorites)
+        {
+            var grid = new Grid
+            {
+                ColumnSpacing = 10,
+                RowSpacing = 10
+            };
+
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            for (int i = 0; i < favorites.Count; i++)
+            {
+                if (i % 3 == 0)
+                {
+                    grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                }
+
+                var favoriteCard = BuildFavoriteItemCard(favorites[i]);
+                Grid.SetRow(favoriteCard, i / 3);
+                Grid.SetColumn(favoriteCard, i % 3);
+                grid.Children.Add(favoriteCard);
+            }
+
+            return grid;
+        }
+
+        private FrameworkElement BuildFavoriteItemCard(DashboardFavoriteItem favorite)
+        {
+            var favoriteButton = new Button
+            {
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                Padding = new Thickness(0),
+                Tag = new NavTarget(favorite.NavigationTag, favorite.NavigationParameter)
+            };
+            favoriteButton.Click += FavoriteItem_Click;
+
+            var card = new Grid
+            {
+                MinHeight = 76,
+                Padding = new Thickness(12, 10, 12, 10)
+            };
+
+            var itemContent = new StackPanel { Spacing = 4 };
+            itemContent.Children.Add(BuildFavoriteTitleLine(favorite));
+
+            if (!string.IsNullOrEmpty(favorite.TypeText))
+            {
+                itemContent.Children.Add(new TextBlock
+                {
+                    Text = favorite.TypeText,
+                    FontSize = 12,
+                    Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                    TextTrimming = TextTrimming.CharacterEllipsis
+                });
+            }
+
+            card.Children.Add(itemContent);
+            favoriteButton.Content = card;
+            return favoriteButton;
+        }
+
+        private static UIElement BuildFavoriteTitleLine(DashboardFavoriteItem favorite)
+        {
+            var titleRow = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 8
+            };
+
+            titleRow.Children.Add(new TextBlock
+            {
+                Text = favorite.Title,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis
+            });
+
+            if (!string.IsNullOrEmpty(favorite.StatusText))
+            {
+                var statusBorder = new Border
+                {
+                    CornerRadius = new CornerRadius(3),
+                    Padding = new Thickness(6, 2, 6, 2),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Background = favorite.StatusBrush ??
+                        (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
+                };
+                statusBorder.Child = new TextBlock
+                {
+                    Text = favorite.StatusText,
+                    FontSize = 10,
+                    Foreground = new SolidColorBrush(Color.FromArgb(255, 255, 255, 255))
+                };
+                titleRow.Children.Add(statusBorder);
+            }
+
+            return titleRow;
+        }
+
+        private static UIElement BuildReminderHeader(int totalCount, int enabledCount)
+        {
+            var titleRow = new Grid
+            {
+                ColumnDefinitions =
+                {
+                    new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) },
+                    new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+                    new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) }
+                }
+            };
+
+            var icon = new FontIcon
+            {
+                Glyph = "\xE916",
+                FontSize = 16,
+                Foreground = (Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"]
+            };
+            Grid.SetColumn(icon, 0);
+            titleRow.Children.Add(icon);
+
+            var titleText = new TextBlock
+            {
+                Text = "定时器",
+                Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(10, 0, 0, 0)
+            };
+            Grid.SetColumn(titleText, 1);
+            titleRow.Children.Add(titleText);
+
+            var countBadge = new TextBlock
+            {
+                Text = $"{enabledCount}/{totalCount} 运行中",
+                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(countBadge, 2);
+            titleRow.Children.Add(countBadge);
+
+            return titleRow;
+        }
+
+        private UIElement BuildReminderCardsGrid(System.Collections.Generic.IReadOnlyList<Reminder> reminders)
+        {
+            var grid = new Grid
+            {
+                ColumnSpacing = 10,
+                RowSpacing = 10
+            };
+
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            for (int i = 0; i < reminders.Count; i++)
+            {
+                if (i % 3 == 0)
+                {
+                    grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                }
+
+                var reminderCard = BuildReminderItemCard(reminders[i]);
+                Grid.SetRow(reminderCard, i / 3);
+                Grid.SetColumn(reminderCard, i % 3);
+                grid.Children.Add(reminderCard);
+            }
+
+            return grid;
+        }
+
+        private FrameworkElement BuildReminderItemCard(Reminder reminder)
+        {
+            var card = new Grid
+            {
+                MinHeight = 76,
+                ColumnDefinitions =
+                {
+                    new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+                    new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) }
+                },
+                Padding = new Thickness(12, 10, 10, 10)
+            };
+
+            var details = new StackPanel { Spacing = 4 };
+            details.Children.Add(BuildReminderTitleLine(reminder));
+            details.Children.Add(new TextBlock
+            {
+                Text = BuildReminderScheduleText(reminder),
+                FontSize = 12,
+                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                TextTrimming = TextTrimming.CharacterEllipsis
+            });
+            Grid.SetColumn(details, 0);
+            card.Children.Add(details);
+
+            var toggleButton = new Button
+            {
+                Tag = reminder.Id,
+                Padding = new Thickness(7, 5, 7, 5),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            ToolTipService.SetToolTip(toggleButton, "关闭");
+            toggleButton.Content = new FontIcon
+            {
+                Glyph = "\xE769",
+                FontSize = 14
+            };
+            toggleButton.Click += ReminderToggle_Click;
+            Grid.SetColumn(toggleButton, 1);
+            card.Children.Add(toggleButton);
+
+            return new Border
+            {
+                Background = (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"],
+                CornerRadius = new CornerRadius(6),
+                Child = card
+            };
+        }
+
+        private static UIElement BuildReminderTitleLine(Reminder reminder)
+        {
+            var titleRow = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 8
+            };
+
+            titleRow.Children.Add(new TextBlock
+            {
+                Text = reminder.Title,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis
+            });
+
+            var badge = new Border
+            {
+                CornerRadius = new CornerRadius(3),
+                Padding = new Thickness(6, 2, 6, 2),
+                VerticalAlignment = VerticalAlignment.Center,
+                Background = ResolveReminderCategoryBrush(reminder)
+            };
+            badge.Child = new TextBlock
+            {
+                Text = reminder.ActionType == ReminderActionTypes.Script ? "脚本" : reminder.Category,
+                FontSize = 10,
+                Foreground = new SolidColorBrush(Color.FromArgb(255, 255, 255, 255))
+            };
+            titleRow.Children.Add(badge);
+
+            return titleRow;
+        }
+
+        private static string BuildReminderScheduleText(Reminder reminder)
+        {
+            return $"{reminder.GetFrequencyDescription()} · 下次 {reminder.GetNextTriggerTime():MM-dd HH:mm}";
+        }
+
+        private static SolidColorBrush ResolveReminderCategoryBrush(Reminder reminder)
+        {
+            if (reminder.ActionType == ReminderActionTypes.Script)
+            {
+                return new SolidColorBrush(Color.FromArgb(255, 239, 83, 80));
+            }
+
+            return reminder.Category switch
+            {
+                ReminderPresets.Water => new SolidColorBrush(Color.FromArgb(255, 66, 165, 245)),
+                ReminderPresets.StandUp => new SolidColorBrush(Color.FromArgb(255, 102, 187, 106)),
+                ReminderPresets.Meeting => new SolidColorBrush(Color.FromArgb(255, 255, 167, 38)),
+                ReminderPresets.OffWork => new SolidColorBrush(Color.FromArgb(255, 171, 71, 188)),
+                _ => new SolidColorBrush(Color.FromArgb(255, 144, 164, 174))
+            };
         }
 
         private void FavoriteItem_Click(object sender, RoutedEventArgs e)
         {
             if (sender is Button button && button.Tag is NavTarget target)
             {
+                if (string.IsNullOrWhiteSpace(target.Tag))
+                {
+                    return;
+                }
+
                 NavigateToPage(target.Tag, target.Parameter);
             }
         }
@@ -211,6 +507,24 @@ namespace ToolBox.Views
             {
                 NavigateToPage(navTag);
             }
+        }
+
+        private async void ReminderToggle_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button button || button.Tag is not long reminderId)
+            {
+                return;
+            }
+
+            var reminder = _reminderService.GetReminder(reminderId);
+            if (reminder == null)
+            {
+                return;
+            }
+
+            _reminderService.SetReminderEnabled(reminder.Id, !reminder.IsEnabled);
+            await LoadCardsAsync();
+            await ReminderSchedulerService.Instance.CheckNowAsync();
         }
 
         /// <summary>

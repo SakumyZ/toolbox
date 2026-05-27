@@ -23,6 +23,21 @@ namespace ToolBox.Models
     }
 
     /// <summary>
+    /// 提醒动作类型
+    /// </summary>
+    public static class ReminderActionTypes
+    {
+        public const string Notification = "通知提醒";
+        public const string Script = "执行脚本";
+
+        public static readonly IReadOnlyList<string> All = new[]
+        {
+            Notification,
+            Script
+        };
+    }
+
+    /// <summary>
     /// 定时提醒实体
     /// </summary>
     public class Reminder
@@ -43,6 +58,21 @@ namespace ToolBox.Models
         public string Title { get; set; } = string.Empty;
 
         /// <summary>
+        /// 动作类型
+        /// </summary>
+        public string ActionType { get; set; } = ReminderActionTypes.Notification;
+
+        /// <summary>
+        /// 关联的脚本 ID（如果 ActionType 是 Script）
+        /// </summary>
+        public long? ScriptId { get; set; }
+
+        /// <summary>
+        /// 脚本执行参数的 JSON 序列化字符串
+        /// </summary>
+        public string ScriptParameters { get; set; } = string.Empty;
+
+        /// <summary>
         /// 通知内容
         /// </summary>
         public string Message { get; set; } = string.Empty;
@@ -51,6 +81,11 @@ namespace ToolBox.Models
         /// 每日触发时间，格式 HH:mm
         /// </summary>
         public string TimeText { get; set; } = "09:00";
+
+        /// <summary>
+        /// 触发日期（供单次使用），格式 yyyy-MM-dd，为空代表每天轮询
+        /// </summary>
+        public string DateText { get; set; } = string.Empty;
 
         /// <summary>
         /// 提醒频率
@@ -109,10 +144,23 @@ namespace ToolBox.Models
                 return current;
             }
 
-            var candidate = current.Date.Add(timeOfDay);
+            DateTime targetDate = current.Date;
+            bool hasExplicitDate = false;
+            if (!string.IsNullOrWhiteSpace(DateText) && DateTime.TryParse(DateText, out var parsedDate))
+            {
+                hasExplicitDate = true;
+                targetDate = parsedDate.Date;
+            }
+
+            var candidate = targetDate.Add(timeOfDay);
             if (LastTriggeredAt.HasValue && candidate <= LastTriggeredAt.Value)
             {
                 return LastTriggeredAt.Value;
+            }
+
+            if (!hasExplicitDate && candidate <= current)
+            {
+                candidate = candidate.AddDays(1);
             }
 
             return candidate;
@@ -180,7 +228,7 @@ namespace ToolBox.Models
                 ReminderRecurrenceTypes.Interval => $"每隔 {IntervalMinutes} 分钟",
                 ReminderRecurrenceTypes.Daily => $"每天 {TimeText}",
                 ReminderRecurrenceTypes.Monthly => $"每月 {DayOfMonth} 日 {TimeText}",
-                _ => $"单次 {TimeText}"
+                _ => string.IsNullOrWhiteSpace(DateText) ? $"单次 {TimeText}" : $"单次 {DateText} {TimeText}"
             };
         }
     }

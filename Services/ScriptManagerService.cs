@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 using ToolBox.Models;
@@ -65,7 +66,7 @@ namespace ToolBox.Services
                     FileName = reader.GetString(4),
                     RelativeScriptPath = reader.GetString(5),
                     WorkingDirectory = reader.GetString(6),
-                    CustomInterpreterPath = reader.GetString(7),
+                    CommandPrefix = reader.GetString(7),
                     IsFavorite = reader.GetInt32(8) == 1,
                     IsRunInTerminal = reader.GetInt32(9) == 1,
                     CreatedAt = DateTime.Parse(reader.GetString(10), null, DateTimeStyles.RoundtripKind),
@@ -112,7 +113,7 @@ namespace ToolBox.Services
                 FileName = reader.GetString(4),
                 RelativeScriptPath = reader.GetString(5),
                 WorkingDirectory = reader.GetString(6),
-                CustomInterpreterPath = reader.GetString(7),
+                CommandPrefix = reader.GetString(7),
                 IsFavorite = reader.GetInt32(8) == 1,
                 IsRunInTerminal = reader.GetInt32(9) == 1,
                 CreatedAt = DateTime.Parse(reader.GetString(10), null, DateTimeStyles.RoundtripKind),
@@ -161,12 +162,12 @@ namespace ToolBox.Services
                         INSERT INTO Scripts (Name, Description, ScriptType, FileName, RelativeScriptPath, WorkingDirectory,
                                              CustomInterpreterPath, IsFavorite, IsRunInTerminal, CreatedAt, UpdatedAt)
                         VALUES ($name, $description, $scriptType, $fileName, $relativeScriptPath, $workingDirectory,
-                                $customInterpreterPath, $isFavorite, $isRunInTerminal, $createdAt, $updatedAt);
+                                $commandPrefix, $isFavorite, $isRunInTerminal, $createdAt, $updatedAt);
                         SELECT last_insert_rowid();";
                     BindScriptParameters(insertCommand, script, now, now);
-                    insertCommand.Parameters.AddWithValue("$scriptType", script.ScriptType);
-                    insertCommand.Parameters.AddWithValue("$fileName", script.FileName);
-                    insertCommand.Parameters.AddWithValue("$relativeScriptPath", script.RelativeScriptPath);
+                    insertCommand.Parameters.AddWithValue("$scriptType", script.ScriptType ?? string.Empty);
+                    insertCommand.Parameters.AddWithValue("$fileName", script.FileName ?? string.Empty);
+                    insertCommand.Parameters.AddWithValue("$relativeScriptPath", script.RelativeScriptPath ?? string.Empty);
                     script.Id = (long)insertCommand.ExecuteScalar()!;
                 }
 
@@ -194,16 +195,15 @@ namespace ToolBox.Services
                         FileName = $fileName,
                         RelativeScriptPath = $relativeScriptPath,
                         WorkingDirectory = $workingDirectory,
-                        CustomInterpreterPath = $customInterpreterPath,
+                        CustomInterpreterPath = $commandPrefix,
                         IsFavorite = $isFavorite,
                         IsRunInTerminal = $isRunInTerminal,
                         UpdatedAt = $updatedAt
                     WHERE Id = $id";
                 BindScriptParameters(updateCommand, script, script.CreatedAt == default ? now : script.CreatedAt.ToString("o"), now);
-                updateCommand.Parameters.AddWithValue("$scriptType", script.ScriptType);
-                updateCommand.Parameters.AddWithValue("$fileName", script.FileName);
-                updateCommand.Parameters.AddWithValue("$relativeScriptPath", script.RelativeScriptPath);
-                updateCommand.Parameters.AddWithValue("$customInterpreterPath", script.CustomInterpreterPath);
+                updateCommand.Parameters.AddWithValue("$scriptType", script.ScriptType ?? string.Empty);
+                updateCommand.Parameters.AddWithValue("$fileName", script.FileName ?? string.Empty);
+                updateCommand.Parameters.AddWithValue("$relativeScriptPath", script.RelativeScriptPath ?? string.Empty);
                 updateCommand.Parameters.AddWithValue("$id", script.Id);
                 updateCommand.ExecuteNonQuery();
 
@@ -241,6 +241,7 @@ namespace ToolBox.Services
                 Description = source.Description,
                 ScriptType = source.ScriptType,
                 WorkingDirectory = source.WorkingDirectory,
+                CommandPrefix = source.CommandPrefix,
                 IsFavorite = false,
                 IsRunInTerminal = source.IsRunInTerminal,
                 Parameters = source.Parameters.Select(parameter => new ScriptParameterDefinition
@@ -274,6 +275,11 @@ namespace ToolBox.Services
             deleteParameters.CommandText = "DELETE FROM ScriptParameters WHERE ScriptId = $scriptId";
             deleteParameters.Parameters.AddWithValue("$scriptId", scriptId);
             deleteParameters.ExecuteNonQuery();
+
+            var deleteLogs = connection.CreateCommand();
+            deleteLogs.CommandText = "DELETE FROM ScriptExecutionLogs WHERE ScriptId = $scriptId";
+            deleteLogs.Parameters.AddWithValue("$scriptId", scriptId);
+            deleteLogs.ExecuteNonQuery();
 
             var deleteScript = connection.CreateCommand();
             deleteScript.CommandText = "DELETE FROM Scripts WHERE Id = $scriptId";
@@ -309,17 +315,55 @@ namespace ToolBox.Services
             Action<string>? onOutputLine,
             Action<string>? onErrorLine)
         {
+            return await ExecuteScriptAsync(
+                script,
+                parameterValues,
+                onOutputLine,
+                onErrorLine,
+                ScriptExecutionSources.Manual,
+                null,
+                null);
+        }
+
+        /// <summary>
+        /// 执行脚本，并写入执行日志。
+        /// </summary>
+        public async Task<ScriptExecutionResult> ExecuteScriptAsync(
+            ScriptDefinition script,
+            Dictionary<long, string> parameterValues,
+            Action<string>? onOutputLine,
+            Action<string>? onErrorLine,
+            string source,
+            long? reminderId,
+            long? existingLogId)
+        {
             var result = new ScriptExecutionResult
             {
                 StartedAt = DateTime.Now
             };
 
             var scriptPath = GetScriptAbsolutePath(script);
+            var workingDirectory = File.Exists(scriptPath)
+                ? ResolveWorkingDirectory(script, scriptPath)
+                : string.Empty;
+            var commandPreview = File.Exists(scriptPath)
+                ? BuildCommandPreview(script, scriptPath, parameterValues)
+                : string.Empty;
+            var logId = existingLogId ?? CreateExecutionLog(
+                script,
+                source,
+                reminderId,
+                result.StartedAt,
+                commandPreview,
+                workingDirectory,
+                parameterValues);
+
             if (!File.Exists(scriptPath))
             {
                 result.Success = false;
                 result.Message = $"脚本文件不存在：{scriptPath}";
                 result.FinishedAt = DateTime.Now;
+                CompleteExecutionLog(logId, result);
                 return result;
             }
 
@@ -329,16 +373,17 @@ namespace ToolBox.Services
                 result.Success = false;
                 result.Message = validationMessage;
                 result.FinishedAt = DateTime.Now;
+                CompleteExecutionLog(logId, result);
                 return result;
             }
 
-            var workingDirectory = ResolveWorkingDirectory(script, scriptPath);
             var startInfo = BuildStartInfo(script, scriptPath, workingDirectory, parameterValues);
             if (startInfo == null)
             {
                 result.Success = false;
                 result.Message = "无法解析脚本运行器，请确认系统已安装对应环境。";
                 result.FinishedAt = DateTime.Now;
+                CompleteExecutionLog(logId, result);
                 return result;
             }
 
@@ -423,6 +468,7 @@ namespace ToolBox.Services
             }
 
             result.FinishedAt = DateTime.Now;
+            CompleteExecutionLog(logId, result);
             return result;
         }
 
@@ -479,7 +525,22 @@ namespace ToolBox.Services
         {
             var parts = new List<string>();
             var scriptType = script.ScriptType;
-            var customInterpreter = script.CustomInterpreterPath;
+            if (TryParseCommandPrefix(script.CommandPrefix, out var commandPrefixTokens))
+            {
+                foreach (var prefixToken in commandPrefixTokens)
+                {
+                    parts.Add(FormatCommandToken(prefixToken));
+                }
+
+                parts.Add(QuoteCommandPart(scriptPath));
+
+                foreach (var token in tokens)
+                {
+                    parts.Add(QuoteCommandPart(token));
+                }
+
+                return parts;
+            }
 
             switch (scriptType)
             {
@@ -493,9 +554,7 @@ namespace ToolBox.Services
                     break;
 
                 case ScriptTypes.Shell:
-                    var shellExe = string.IsNullOrWhiteSpace(customInterpreter)
-                        ? ResolveShellExecutable()
-                        : customInterpreter;
+                    var shellExe = ResolveShellExecutable();
                     if (!string.IsNullOrWhiteSpace(shellExe))
                     {
                         parts.Add(QuoteCommandPart(shellExe));
@@ -504,9 +563,7 @@ namespace ToolBox.Services
                     break;
 
                 case ScriptTypes.Python:
-                    var pythonExe = string.IsNullOrWhiteSpace(customInterpreter)
-                        ? ResolvePythonExecutable(workingDirectory)
-                        : customInterpreter;
+                    var pythonExe = ResolvePythonExecutable(workingDirectory);
 
                     if (!string.IsNullOrWhiteSpace(pythonExe))
                     {
@@ -525,9 +582,7 @@ namespace ToolBox.Services
                     break;
 
                 case ScriptTypes.Node:
-                    var nodeExe = string.IsNullOrWhiteSpace(customInterpreter)
-                        ? ResolveNodeExecutable(workingDirectory)
-                        : customInterpreter;
+                    var nodeExe = ResolveNodeExecutable(workingDirectory);
                     if (!string.IsNullOrWhiteSpace(nodeExe))
                     {
                         parts.Add(QuoteCommandPart(nodeExe));
@@ -536,9 +591,7 @@ namespace ToolBox.Services
                     break;
 
                 case ScriptTypes.Ruby:
-                    var rubyExe = string.IsNullOrWhiteSpace(customInterpreter)
-                        ? ResolveRubyExecutable(workingDirectory)
-                        : customInterpreter;
+                    var rubyExe = ResolveRubyExecutable(workingDirectory);
                     if (!string.IsNullOrWhiteSpace(rubyExe))
                     {
                         parts.Add(QuoteCommandPart(rubyExe));
@@ -547,9 +600,7 @@ namespace ToolBox.Services
                     break;
 
                 case ScriptTypes.Perl:
-                    var perlExe = string.IsNullOrWhiteSpace(customInterpreter)
-                        ? FindExecutableFromPath("perl.exe")
-                        : customInterpreter;
+                    var perlExe = FindExecutableFromPath("perl.exe");
                     if (!string.IsNullOrWhiteSpace(perlExe))
                     {
                         parts.Add(QuoteCommandPart(perlExe));
@@ -558,9 +609,7 @@ namespace ToolBox.Services
                     break;
 
                 case ScriptTypes.PHP:
-                    var phpExe = string.IsNullOrWhiteSpace(customInterpreter)
-                        ? FindExecutableFromPath("php.exe")
-                        : customInterpreter;
+                    var phpExe = FindExecutableFromPath("php.exe");
                     if (!string.IsNullOrWhiteSpace(phpExe))
                     {
                         parts.Add(QuoteCommandPart(phpExe));
@@ -569,14 +618,10 @@ namespace ToolBox.Services
                     break;
 
                 case ScriptTypes.Lua:
-                    var luaExe = customInterpreter;
+                    var luaExe = FindExecutableFromPath("lua.exe");
                     if (string.IsNullOrWhiteSpace(luaExe))
                     {
-                        luaExe = FindExecutableFromPath("lua.exe");
-                        if (string.IsNullOrWhiteSpace(luaExe))
-                        {
-                            luaExe = FindExecutableFromPath("lua53.exe");
-                        }
+                        luaExe = FindExecutableFromPath("lua53.exe");
                     }
                     if (!string.IsNullOrWhiteSpace(luaExe))
                     {
@@ -598,6 +643,53 @@ namespace ToolBox.Services
             return parts;
         }
 
+        private static bool TryParseCommandPrefix(string? commandPrefix, out List<string> tokens)
+        {
+            tokens = new List<string>();
+
+            if (string.IsNullOrWhiteSpace(commandPrefix))
+            {
+                return false;
+            }
+
+            var currentToken = new StringBuilder();
+            var inQuotes = false;
+
+            foreach (var character in commandPrefix)
+            {
+                if (character == '"')
+                {
+                    inQuotes = !inQuotes;
+                    continue;
+                }
+
+                if (char.IsWhiteSpace(character) && !inQuotes)
+                {
+                    if (currentToken.Length > 0)
+                    {
+                        tokens.Add(currentToken.ToString());
+                        currentToken.Clear();
+                    }
+
+                    continue;
+                }
+
+                currentToken.Append(character);
+            }
+
+            if (currentToken.Length > 0)
+            {
+                tokens.Add(currentToken.ToString());
+            }
+
+            return tokens.Count > 0;
+        }
+
+        private static string FormatCommandToken(string token)
+        {
+            return token == "&" ? token : QuoteCommandPart(token);
+        }
+
         /// <summary>
         /// 在新终端中启动脚本，适用于需要交互输入的场景。
         /// </summary>
@@ -616,13 +708,30 @@ namespace ToolBox.Services
                 return (false, "无法为当前脚本创建终端进程");
             }
 
+            long? launchLogId = null;
+            var startedAt = DateTime.Now;
             try
             {
+                launchLogId = CreateExecutionLog(
+                    script,
+                    ScriptExecutionSources.Manual,
+                    null,
+                    startedAt,
+                    BuildCommandPreview(script, scriptPath, parameterValues),
+                    workingDirectory,
+                    parameterValues);
+
                 Process.Start(startInfo);
+                CompleteLaunchedExecutionLog(launchLogId.Value, startedAt, "已在新终端中启动脚本");
                 return (true, "已在新终端中启动脚本");
             }
             catch (Exception ex)
             {
+                if (launchLogId.HasValue)
+                {
+                    CompleteFailedExecutionLog(launchLogId.Value, startedAt, $"启动终端失败：{ex.Message}");
+                }
+
                 return (false, $"启动终端失败：{ex.Message}");
             }
         }
@@ -664,20 +773,385 @@ namespace ToolBox.Services
                     FOREIGN KEY (ScriptId) REFERENCES Scripts(Id) ON DELETE CASCADE
                 );
 
+                CREATE TABLE IF NOT EXISTS ScriptExecutionLogs (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ScriptId INTEGER NOT NULL,
+                    ReminderId INTEGER NULL,
+                    Source TEXT NOT NULL DEFAULT 'Manual',
+                    Status TEXT NOT NULL DEFAULT 'Running',
+                    ExitCode INTEGER NULL,
+                    StartedAt TEXT NOT NULL,
+                    FinishedAt TEXT NULL,
+                    DurationMs INTEGER NULL,
+                    CommandPreview TEXT NOT NULL DEFAULT '',
+                    WorkingDirectory TEXT NOT NULL DEFAULT '',
+                    ParameterSnapshotJson TEXT NOT NULL DEFAULT '',
+                    StandardOutput TEXT NOT NULL DEFAULT '',
+                    StandardError TEXT NOT NULL DEFAULT '',
+                    Message TEXT NOT NULL DEFAULT '',
+                    CreatedAt TEXT NOT NULL,
+                    ArchivedAt TEXT NULL,
+                    FOREIGN KEY (ScriptId) REFERENCES Scripts(Id) ON DELETE CASCADE
+                );
+
                 CREATE INDEX IF NOT EXISTS IX_Scripts_Name ON Scripts(Name);
                 CREATE INDEX IF NOT EXISTS IX_ScriptParameters_ScriptId ON ScriptParameters(ScriptId);
+                CREATE INDEX IF NOT EXISTS IX_ScriptExecutionLogs_ScriptId_StartedAt
+                    ON ScriptExecutionLogs(ScriptId, StartedAt DESC);
+                CREATE INDEX IF NOT EXISTS IX_ScriptExecutionLogs_ReminderId_StartedAt
+                    ON ScriptExecutionLogs(ReminderId, StartedAt DESC);
             ";
             command.ExecuteNonQuery();
             EnsureColumnExists(connection, "Scripts", "IsRunInTerminal", "INTEGER NOT NULL DEFAULT 0");
             EnsureColumnExists(connection, "Scripts", "CustomInterpreterPath", "TEXT NOT NULL DEFAULT ''");
         }
 
+        /// <summary>
+        /// 创建脚本执行日志。
+        /// </summary>
+        public long CreateExecutionLog(
+            ScriptDefinition script,
+            string source,
+            long? reminderId,
+            DateTime startedAt,
+            string commandPreview,
+            string workingDirectory,
+            Dictionary<long, string> parameterValues)
+        {
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
+
+            var now = DateTime.Now.ToString("o");
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+                INSERT INTO ScriptExecutionLogs (
+                    ScriptId, ReminderId, Source, Status, StartedAt, CommandPreview,
+                    WorkingDirectory, ParameterSnapshotJson, CreatedAt)
+                VALUES (
+                    $scriptId, $reminderId, $source, $status, $startedAt, $commandPreview,
+                    $workingDirectory, $parameterSnapshotJson, $createdAt);
+                SELECT last_insert_rowid();";
+            command.Parameters.AddWithValue("$scriptId", script.Id);
+            command.Parameters.AddWithValue("$reminderId", reminderId.HasValue ? (object)reminderId.Value : DBNull.Value);
+            command.Parameters.AddWithValue("$source", string.IsNullOrWhiteSpace(source) ? ScriptExecutionSources.Manual : source);
+            command.Parameters.AddWithValue("$status", ScriptExecutionStatuses.Running);
+            command.Parameters.AddWithValue("$startedAt", startedAt.ToString("o"));
+            command.Parameters.AddWithValue("$commandPreview", commandPreview ?? string.Empty);
+            command.Parameters.AddWithValue("$workingDirectory", workingDirectory ?? string.Empty);
+            command.Parameters.AddWithValue("$parameterSnapshotJson", BuildParameterSnapshotJson(script, parameterValues));
+            command.Parameters.AddWithValue("$createdAt", now);
+            return (long)command.ExecuteScalar()!;
+        }
+
+        /// <summary>
+        /// 完成脚本执行日志。
+        /// </summary>
+        public void CompleteExecutionLog(long logId, ScriptExecutionResult result)
+        {
+            var status = result.Success ? ScriptExecutionStatuses.Success : ScriptExecutionStatuses.Failed;
+            var durationMs = result.FinishedAt > result.StartedAt
+                ? (long)(result.FinishedAt - result.StartedAt).TotalMilliseconds
+                : 0;
+
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
+
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+                UPDATE ScriptExecutionLogs
+                SET Status = $status,
+                    ExitCode = $exitCode,
+                    FinishedAt = $finishedAt,
+                    DurationMs = $durationMs,
+                    StandardOutput = $standardOutput,
+                    StandardError = $standardError,
+                    Message = $message
+                WHERE Id = $id";
+            command.Parameters.AddWithValue("$status", status);
+            command.Parameters.AddWithValue("$exitCode", result.ExitCode);
+            command.Parameters.AddWithValue("$finishedAt", result.FinishedAt.ToString("o"));
+            command.Parameters.AddWithValue("$durationMs", durationMs);
+            command.Parameters.AddWithValue("$standardOutput", TruncateLogText(result.StandardOutput));
+            command.Parameters.AddWithValue("$standardError", TruncateLogText(result.StandardError));
+            command.Parameters.AddWithValue("$message", result.Message ?? string.Empty);
+            command.Parameters.AddWithValue("$id", logId);
+            command.ExecuteNonQuery();
+        }
+
+        /// <summary>
+        /// 获取脚本执行日志。
+        /// </summary>
+        public List<ScriptExecutionLog> GetExecutionLogs(long scriptId, int limit = 50)
+        {
+            var logs = new List<ScriptExecutionLog>();
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
+
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+                SELECT Id, ScriptId, ReminderId, Source, Status, ExitCode, StartedAt, FinishedAt, DurationMs,
+                       CommandPreview, WorkingDirectory, ParameterSnapshotJson, StandardOutput, StandardError,
+                       Message, CreatedAt, ArchivedAt
+                FROM ScriptExecutionLogs
+                WHERE ScriptId = $scriptId AND ArchivedAt IS NULL
+                ORDER BY StartedAt DESC
+                LIMIT $limit";
+            command.Parameters.AddWithValue("$scriptId", scriptId);
+            command.Parameters.AddWithValue("$limit", limit);
+
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                logs.Add(ReadExecutionLog(reader));
+            }
+
+            return logs;
+        }
+
+        /// <summary>
+        /// 获取单条脚本执行日志。
+        /// </summary>
+        public ScriptExecutionLog? GetExecutionLog(long logId)
+        {
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
+
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+                SELECT Id, ScriptId, ReminderId, Source, Status, ExitCode, StartedAt, FinishedAt, DurationMs,
+                       CommandPreview, WorkingDirectory, ParameterSnapshotJson, StandardOutput, StandardError,
+                       Message, CreatedAt, ArchivedAt
+                FROM ScriptExecutionLogs
+                WHERE Id = $id";
+            command.Parameters.AddWithValue("$id", logId);
+
+            using var reader = command.ExecuteReader();
+            return reader.Read() ? ReadExecutionLog(reader) : null;
+        }
+
+        /// <summary>
+        /// 获取定时器最近的脚本执行日志。
+        /// </summary>
+        public ScriptExecutionLog? GetLatestExecutionLogByReminder(long reminderId)
+        {
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
+
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+                SELECT Id, ScriptId, ReminderId, Source, Status, ExitCode, StartedAt, FinishedAt, DurationMs,
+                       CommandPreview, WorkingDirectory, ParameterSnapshotJson, StandardOutput, StandardError,
+                       Message, CreatedAt, ArchivedAt
+                FROM ScriptExecutionLogs
+                WHERE ReminderId = $reminderId AND ArchivedAt IS NULL
+                ORDER BY StartedAt DESC
+                LIMIT 1";
+            command.Parameters.AddWithValue("$reminderId", reminderId);
+
+            using var reader = command.ExecuteReader();
+            return reader.Read() ? ReadExecutionLog(reader) : null;
+        }
+
+        /// <summary>
+        /// 获取定时器关联的脚本执行日志。
+        /// </summary>
+        public List<ScriptExecutionLog> GetExecutionLogsByReminder(long reminderId, int limit = 50)
+        {
+            var logs = new List<ScriptExecutionLog>();
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
+
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+                SELECT Id, ScriptId, ReminderId, Source, Status, ExitCode, StartedAt, FinishedAt, DurationMs,
+                       CommandPreview, WorkingDirectory, ParameterSnapshotJson, StandardOutput, StandardError,
+                       Message, CreatedAt, ArchivedAt
+                FROM ScriptExecutionLogs
+                WHERE ReminderId = $reminderId AND ArchivedAt IS NULL
+                ORDER BY StartedAt DESC
+                LIMIT $limit";
+            command.Parameters.AddWithValue("$reminderId", reminderId);
+            command.Parameters.AddWithValue("$limit", limit);
+
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                logs.Add(ReadExecutionLog(reader));
+            }
+
+            return logs;
+        }
+
+        /// <summary>
+        /// 清空指定脚本的执行日志。
+        /// </summary>
+        public int ClearExecutionLogs(long scriptId)
+        {
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
+
+            var command = connection.CreateCommand();
+            command.CommandText = "DELETE FROM ScriptExecutionLogs WHERE ScriptId = $scriptId AND Status <> $running";
+            command.Parameters.AddWithValue("$scriptId", scriptId);
+            command.Parameters.AddWithValue("$running", ScriptExecutionStatuses.Running);
+            return command.ExecuteNonQuery();
+        }
+
+        /// <summary>
+        /// 清理过期脚本执行日志。
+        /// </summary>
+        public int CleanupExecutionLogs(int successRetentionDays = 30, int failureRetentionDays = 90, int maxLogsPerScript = 200)
+        {
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
+
+            var successCutoff = DateTime.Now.AddDays(-successRetentionDays).ToString("o");
+            var failureCutoff = DateTime.Now.AddDays(-failureRetentionDays).ToString("o");
+
+            var deleteByAge = connection.CreateCommand();
+            deleteByAge.CommandText = @"
+                DELETE FROM ScriptExecutionLogs
+                WHERE Status <> $running
+                  AND (
+                    (Status = $success AND StartedAt < $successCutoff)
+                    OR (Status <> $success AND StartedAt < $failureCutoff)
+                  )";
+            deleteByAge.Parameters.AddWithValue("$running", ScriptExecutionStatuses.Running);
+            deleteByAge.Parameters.AddWithValue("$success", ScriptExecutionStatuses.Success);
+            deleteByAge.Parameters.AddWithValue("$successCutoff", successCutoff);
+            deleteByAge.Parameters.AddWithValue("$failureCutoff", failureCutoff);
+            var deleted = deleteByAge.ExecuteNonQuery();
+
+            var trimCommand = connection.CreateCommand();
+            trimCommand.CommandText = @"
+                DELETE FROM ScriptExecutionLogs
+                WHERE Id IN (
+                    SELECT Id
+                    FROM (
+                        SELECT Id,
+                               ROW_NUMBER() OVER (PARTITION BY ScriptId ORDER BY StartedAt DESC) AS RowNumber
+                        FROM ScriptExecutionLogs
+                        WHERE Status <> $running
+                    )
+                    WHERE RowNumber > $maxLogsPerScript
+                )";
+            trimCommand.Parameters.AddWithValue("$running", ScriptExecutionStatuses.Running);
+            trimCommand.Parameters.AddWithValue("$maxLogsPerScript", maxLogsPerScript);
+            deleted += trimCommand.ExecuteNonQuery();
+
+            return deleted;
+        }
+
+        private void CompleteLaunchedExecutionLog(long logId, DateTime startedAt, string message)
+        {
+            var result = new ScriptExecutionResult
+            {
+                Success = true,
+                ExitCode = 0,
+                StartedAt = startedAt,
+                FinishedAt = DateTime.Now,
+                Message = message
+            };
+
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
+
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+                UPDATE ScriptExecutionLogs
+                SET Status = $status,
+                    ExitCode = $exitCode,
+                    FinishedAt = $finishedAt,
+                    DurationMs = $durationMs,
+                    Message = $message
+                WHERE Id = $id";
+            command.Parameters.AddWithValue("$status", ScriptExecutionStatuses.Launched);
+            command.Parameters.AddWithValue("$exitCode", result.ExitCode);
+            command.Parameters.AddWithValue("$finishedAt", result.FinishedAt.ToString("o"));
+            command.Parameters.AddWithValue("$durationMs", (long)(result.FinishedAt - result.StartedAt).TotalMilliseconds);
+            command.Parameters.AddWithValue("$message", result.Message);
+            command.Parameters.AddWithValue("$id", logId);
+            command.ExecuteNonQuery();
+        }
+
+        private void CompleteFailedExecutionLog(long logId, DateTime startedAt, string message)
+        {
+            CompleteExecutionLog(logId, new ScriptExecutionResult
+            {
+                Success = false,
+                ExitCode = -1,
+                StartedAt = startedAt,
+                FinishedAt = DateTime.Now,
+                Message = message
+            });
+        }
+
+        private static ScriptExecutionLog ReadExecutionLog(SqliteDataReader reader)
+        {
+            return new ScriptExecutionLog
+            {
+                Id = reader.GetInt64(0),
+                ScriptId = reader.GetInt64(1),
+                ReminderId = reader.IsDBNull(2) ? null : reader.GetInt64(2),
+                Source = reader.GetString(3),
+                Status = reader.GetString(4),
+                ExitCode = reader.IsDBNull(5) ? null : reader.GetInt32(5),
+                StartedAt = DateTime.Parse(reader.GetString(6), null, DateTimeStyles.RoundtripKind),
+                FinishedAt = reader.IsDBNull(7) ? null : DateTime.Parse(reader.GetString(7), null, DateTimeStyles.RoundtripKind),
+                DurationMs = reader.IsDBNull(8) ? null : reader.GetInt64(8),
+                CommandPreview = reader.GetString(9),
+                WorkingDirectory = reader.GetString(10),
+                ParameterSnapshotJson = reader.GetString(11),
+                StandardOutput = reader.GetString(12),
+                StandardError = reader.GetString(13),
+                Message = reader.GetString(14),
+                CreatedAt = DateTime.Parse(reader.GetString(15), null, DateTimeStyles.RoundtripKind),
+                ArchivedAt = reader.IsDBNull(16) ? null : DateTime.Parse(reader.GetString(16), null, DateTimeStyles.RoundtripKind)
+            };
+        }
+
+        private static string BuildParameterSnapshotJson(ScriptDefinition script, Dictionary<long, string> parameterValues)
+        {
+            var snapshot = script.Parameters
+                .OrderBy(item => item.SortOrder)
+                .ThenBy(item => item.Id)
+                .Select(parameter =>
+                {
+                    parameterValues.TryGetValue(parameter.Id, out var value);
+                    return new
+                    {
+                        parameter.Id,
+                        parameter.Name,
+                        DisplayName = ResolveDisplayName(parameter),
+                        parameter.ArgumentName,
+                        Value = value ?? string.Empty
+                    };
+                })
+                .ToList();
+
+            return JsonSerializer.Serialize(snapshot, new JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+        }
+
+        private static string TruncateLogText(string value)
+        {
+            const int maxLength = 1024 * 1024;
+            if (string.IsNullOrEmpty(value) || value.Length <= maxLength)
+            {
+                return value ?? string.Empty;
+            }
+
+            return value[..maxLength] + Environment.NewLine + "[日志过长，已截断]";
+        }
+
         private static void BindScriptParameters(SqliteCommand command, ScriptDefinition script, string createdAt, string updatedAt)
         {
-            command.Parameters.AddWithValue("$name", script.Name);
-            command.Parameters.AddWithValue("$description", script.Description);
+            command.Parameters.AddWithValue("$name", script.Name ?? string.Empty);
+            command.Parameters.AddWithValue("$description", script.Description ?? string.Empty);
             command.Parameters.AddWithValue("$workingDirectory", script.WorkingDirectory ?? string.Empty);
-            command.Parameters.AddWithValue("$customInterpreterPath", script.CustomInterpreterPath ?? string.Empty);
+            command.Parameters.AddWithValue("$commandPrefix", script.CommandPrefix ?? string.Empty);
             command.Parameters.AddWithValue("$isFavorite", script.IsFavorite ? 1 : 0);
             command.Parameters.AddWithValue("$isRunInTerminal", script.IsRunInTerminal ? 1 : 0);
             command.Parameters.AddWithValue("$createdAt", createdAt);
@@ -744,13 +1218,13 @@ namespace ToolBox.Services
                         $scriptId, $name, $displayName, $controlType, $argumentName, $defaultValue,
                         $placeholder, $helpText, $isRequired, $sortOrder)";
                 insertCommand.Parameters.AddWithValue("$scriptId", scriptId);
-                insertCommand.Parameters.AddWithValue("$name", parameter.Name);
-                insertCommand.Parameters.AddWithValue("$displayName", parameter.DisplayName);
-                insertCommand.Parameters.AddWithValue("$controlType", parameter.ControlType);
-                insertCommand.Parameters.AddWithValue("$argumentName", parameter.ArgumentName);
-                insertCommand.Parameters.AddWithValue("$defaultValue", parameter.DefaultValue);
-                insertCommand.Parameters.AddWithValue("$placeholder", parameter.Placeholder);
-                insertCommand.Parameters.AddWithValue("$helpText", parameter.HelpText);
+                insertCommand.Parameters.AddWithValue("$name", parameter.Name ?? string.Empty);
+                insertCommand.Parameters.AddWithValue("$displayName", parameter.DisplayName ?? string.Empty);
+                insertCommand.Parameters.AddWithValue("$controlType", parameter.ControlType ?? string.Empty);
+                insertCommand.Parameters.AddWithValue("$argumentName", parameter.ArgumentName ?? string.Empty);
+                insertCommand.Parameters.AddWithValue("$defaultValue", parameter.DefaultValue ?? string.Empty);
+                insertCommand.Parameters.AddWithValue("$placeholder", parameter.Placeholder ?? string.Empty);
+                insertCommand.Parameters.AddWithValue("$helpText", parameter.HelpText ?? string.Empty);
                 insertCommand.Parameters.AddWithValue("$isRequired", parameter.IsRequired ? 1 : 0);
                 insertCommand.Parameters.AddWithValue("$sortOrder", parameter.SortOrder > 0 ? parameter.SortOrder : index + 1);
                 insertCommand.ExecuteNonQuery();
@@ -867,6 +1341,11 @@ namespace ToolBox.Services
                 RedirectStandardError = true
             };
 
+            if (TryApplyCommandPrefix(startInfo, script.CommandPrefix, scriptPath, tokens))
+            {
+                return startInfo;
+            }
+
             switch (script.ScriptType)
             {
                 case ScriptTypes.Batch:
@@ -888,9 +1367,7 @@ namespace ToolBox.Services
                     break;
                 case ScriptTypes.Shell:
                 {
-                    var executable = string.IsNullOrWhiteSpace(script.CustomInterpreterPath)
-                        ? ResolveShellExecutable()
-                        : script.CustomInterpreterPath;
+                    var executable = ResolveShellExecutable();
 
                     if (string.IsNullOrWhiteSpace(executable))
                     {
@@ -903,9 +1380,7 @@ namespace ToolBox.Services
                 }
                 case ScriptTypes.Python:
                 {
-                    var executable = string.IsNullOrWhiteSpace(script.CustomInterpreterPath)
-                        ? ResolvePythonExecutable(workingDirectory)
-                        : script.CustomInterpreterPath;
+                    var executable = ResolvePythonExecutable(workingDirectory);
 
                     if (string.IsNullOrWhiteSpace(executable))
                     {
@@ -929,9 +1404,7 @@ namespace ToolBox.Services
                 }
                 case ScriptTypes.Node:
                 {
-                    var executable = string.IsNullOrWhiteSpace(script.CustomInterpreterPath)
-                        ? ResolveNodeExecutable(workingDirectory)
-                        : script.CustomInterpreterPath;
+                    var executable = ResolveNodeExecutable(workingDirectory);
 
                     if (string.IsNullOrWhiteSpace(executable))
                     {
@@ -944,9 +1417,7 @@ namespace ToolBox.Services
                 }
                 case ScriptTypes.Ruby:
                 {
-                    var executable = string.IsNullOrWhiteSpace(script.CustomInterpreterPath)
-                        ? ResolveRubyExecutable(workingDirectory)
-                        : script.CustomInterpreterPath;
+                    var executable = ResolveRubyExecutable(workingDirectory);
 
                     if (string.IsNullOrWhiteSpace(executable))
                     {
@@ -959,9 +1430,7 @@ namespace ToolBox.Services
                 }
                 case ScriptTypes.Perl:
                 {
-                    var executable = string.IsNullOrWhiteSpace(script.CustomInterpreterPath)
-                        ? FindExecutableFromPath("perl.exe")
-                        : script.CustomInterpreterPath;
+                    var executable = FindExecutableFromPath("perl.exe");
 
                     if (string.IsNullOrWhiteSpace(executable))
                     {
@@ -974,9 +1443,7 @@ namespace ToolBox.Services
                 }
                 case ScriptTypes.PHP:
                 {
-                    var executable = string.IsNullOrWhiteSpace(script.CustomInterpreterPath)
-                        ? FindExecutableFromPath("php.exe")
-                        : script.CustomInterpreterPath;
+                    var executable = FindExecutableFromPath("php.exe");
 
                     if (string.IsNullOrWhiteSpace(executable))
                     {
@@ -989,14 +1456,10 @@ namespace ToolBox.Services
                 }
                 case ScriptTypes.Lua:
                 {
-                    var executable = script.CustomInterpreterPath;
+                    var executable = FindExecutableFromPath("lua.exe");
                     if (string.IsNullOrWhiteSpace(executable))
                     {
-                        executable = FindExecutableFromPath("lua.exe");
-                        if (string.IsNullOrWhiteSpace(executable))
-                        {
-                            executable = FindExecutableFromPath("lua53.exe");
-                        }
+                        executable = FindExecutableFromPath("lua53.exe");
                     }
                     if (string.IsNullOrWhiteSpace(executable))
                     {
@@ -1026,6 +1489,11 @@ namespace ToolBox.Services
             Dictionary<long, string> parameterValues)
         {
             var tokens = BuildArgumentTokens(script.Parameters, parameterValues);
+
+            if (TryBuildTerminalStartInfo(script.CommandPrefix, scriptPath, workingDirectory, tokens, out var prefixedStartInfo))
+            {
+                return prefixedStartInfo;
+            }
 
             switch (script.ScriptType)
             {
@@ -1068,9 +1536,7 @@ namespace ToolBox.Services
                 }
                 case ScriptTypes.Shell:
                 {
-                    var executable = string.IsNullOrWhiteSpace(script.CustomInterpreterPath)
-                        ? ResolveShellExecutable()
-                        : script.CustomInterpreterPath;
+                    var executable = ResolveShellExecutable();
 
                     if (string.IsNullOrWhiteSpace(executable))
                     {
@@ -1093,9 +1559,7 @@ namespace ToolBox.Services
                 }
                 case ScriptTypes.Python:
                 {
-                    var executable = string.IsNullOrWhiteSpace(script.CustomInterpreterPath)
-                        ? ResolvePythonExecutable(workingDirectory)
-                        : script.CustomInterpreterPath;
+                    var executable = ResolvePythonExecutable(workingDirectory);
 
                     if (string.IsNullOrWhiteSpace(executable))
                     {
@@ -1124,9 +1588,7 @@ namespace ToolBox.Services
                 }
                 case ScriptTypes.Node:
                 {
-                    var executable = string.IsNullOrWhiteSpace(script.CustomInterpreterPath)
-                        ? ResolveNodeExecutable(workingDirectory)
-                        : script.CustomInterpreterPath;
+                    var executable = ResolveNodeExecutable(workingDirectory);
                     if (string.IsNullOrWhiteSpace(executable))
                     {
                         return null;
@@ -1143,9 +1605,7 @@ namespace ToolBox.Services
                 }
                 case ScriptTypes.Ruby:
                 {
-                    var executable = string.IsNullOrWhiteSpace(script.CustomInterpreterPath)
-                        ? ResolveRubyExecutable(workingDirectory)
-                        : script.CustomInterpreterPath;
+                    var executable = ResolveRubyExecutable(workingDirectory);
 
                     if (string.IsNullOrWhiteSpace(executable))
                     {
@@ -1163,9 +1623,7 @@ namespace ToolBox.Services
                 }
                 case ScriptTypes.Perl:
                 {
-                    var executable = string.IsNullOrWhiteSpace(script.CustomInterpreterPath)
-                        ? FindExecutableFromPath("perl.exe")
-                        : script.CustomInterpreterPath;
+                    var executable = FindExecutableFromPath("perl.exe");
 
                     if (string.IsNullOrWhiteSpace(executable))
                     {
@@ -1183,9 +1641,7 @@ namespace ToolBox.Services
                 }
                 case ScriptTypes.PHP:
                 {
-                    var executable = string.IsNullOrWhiteSpace(script.CustomInterpreterPath)
-                        ? FindExecutableFromPath("php.exe")
-                        : script.CustomInterpreterPath;
+                    var executable = FindExecutableFromPath("php.exe");
 
                     if (string.IsNullOrWhiteSpace(executable))
                     {
@@ -1203,14 +1659,10 @@ namespace ToolBox.Services
                 }
                 case ScriptTypes.Lua:
                 {
-                    var executable = script.CustomInterpreterPath;
+                    var executable = FindExecutableFromPath("lua.exe");
                     if (string.IsNullOrWhiteSpace(executable))
                     {
-                        executable = FindExecutableFromPath("lua.exe");
-                        if (string.IsNullOrWhiteSpace(executable))
-                        {
-                            executable = FindExecutableFromPath("lua53.exe");
-                        }
+                        executable = FindExecutableFromPath("lua53.exe");
                     }
                     if (string.IsNullOrWhiteSpace(executable))
                     {
@@ -1456,16 +1908,66 @@ private static bool IsBooleanControlType(string? controlType)
             return string.Join(" ", parts);
         }
 
-        private static string QuoteScriptInvocation(string scriptType, string scriptPath)
+        private static bool TryApplyCommandPrefix(
+            ProcessStartInfo startInfo,
+            string? commandPrefix,
+            string scriptPath,
+            List<string> tokens)
         {
-            var quotedScriptPath = QuoteCommandPart(scriptPath);
-
-            if (string.Equals(scriptType, ScriptTypes.PowerShell, StringComparison.OrdinalIgnoreCase))
+            if (!TryParseCommandPrefix(commandPrefix, out var prefixTokens))
             {
-                return $"& {quotedScriptPath}";
+                return false;
             }
 
-            return quotedScriptPath;
+            startInfo.FileName = prefixTokens[0];
+            for (var index = 1; index < prefixTokens.Count; index++)
+            {
+                startInfo.ArgumentList.Add(prefixTokens[index]);
+            }
+
+            startInfo.ArgumentList.Add(scriptPath);
+            foreach (var token in tokens)
+            {
+                startInfo.ArgumentList.Add(token);
+            }
+
+            return true;
+        }
+
+        private static bool TryBuildTerminalStartInfo(
+            string? commandPrefix,
+            string scriptPath,
+            string workingDirectory,
+            List<string> tokens,
+            out ProcessStartInfo? startInfo)
+        {
+            startInfo = null;
+
+            if (!TryParseCommandPrefix(commandPrefix, out var prefixTokens))
+            {
+                return false;
+            }
+
+            var commandTokens = new List<string>(prefixTokens)
+            {
+                scriptPath
+            };
+            commandTokens.AddRange(tokens);
+
+            startInfo = new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = $"/k {BuildCommandLine(commandTokens)}",
+                WorkingDirectory = workingDirectory,
+                UseShellExecute = true
+            };
+
+            return true;
+        }
+
+        private static string BuildCommandLine(List<string> tokens)
+        {
+            return string.Join(" ", tokens.Select(FormatCommandToken));
         }
 
         private static string FindExecutableFromPath(string executableName)
