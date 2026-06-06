@@ -16,9 +16,26 @@ namespace ToolBox
 
         public MainWindow()
         {
-            InitializeComponent();
-            ExtendsContentIntoTitleBar = true;
-            RegisterHotkeys();
+            try
+            {
+                InitializeComponent();
+                ExtendsContentIntoTitleBar = true;
+                RegisterHotkeys();
+                // 捕获 Frame 导航失败以记录异常（用于定位 Settings 点击崩溃）
+                ContentFrame.NavigationFailed += ContentFrame_NavigationFailed;
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    var appData = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ToolBox");
+                    System.IO.Directory.CreateDirectory(appData);
+                    var logPath = System.IO.Path.Combine(appData, "startup_error.txt");
+                    System.IO.File.AppendAllText(logPath, DateTime.Now.ToString("o") + "\n" + ex.ToString() + "\n\n");
+                }
+                catch { }
+                throw;
+            }
         }
 
         /// <summary>
@@ -94,8 +111,23 @@ namespace ToolBox
         {
             if (args.IsSettingsSelected)
             {
-                // Navigate to settings page (placeholder)
-                // ContentFrame.Navigate(typeof(SettingsPage));
+                try
+                {
+                    ContentFrame.Navigate(typeof(SettingsPage));
+                }
+                catch (Exception ex)
+                {
+                    try
+                    {
+                        var appData = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ToolBox");
+                        System.IO.Directory.CreateDirectory(appData);
+                        var logPath = System.IO.Path.Combine(appData, "nav_error.txt");
+                        System.IO.File.AppendAllText(logPath, DateTime.Now.ToString("o") + "\n" + ex.ToString() + "\n\n");
+                    }
+                    catch { }
+                    // 已记录异常，避免导航异常导致整个应用崩溃。
+                    return;
+                }
             }
             else
             {
@@ -103,6 +135,18 @@ namespace ToolBox
                 string pageTag = (string)selectedItem.Tag;
                 NavigateToPage(pageTag);
             }
+        }
+
+        private void ContentFrame_NavigationFailed(object sender, Microsoft.UI.Xaml.Navigation.NavigationFailedEventArgs e)
+        {
+            try
+            {
+                var appData = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ToolBox");
+                System.IO.Directory.CreateDirectory(appData);
+                var logPath = System.IO.Path.Combine(appData, "nav_error.txt");
+                System.IO.File.AppendAllText(logPath, DateTime.Now.ToString("o") + "\nNavigationFailed: " + e.Exception?.ToString() + "\n\n");
+            }
+            catch { }
         }
 
         /// <summary>
@@ -141,6 +185,9 @@ namespace ToolBox
         {
             switch (pageTag)
             {
+                case "Settings":
+                    ContentFrame.Navigate(typeof(SettingsPage));
+                    break;
                 case "Dashboard":
                     ContentFrame.Navigate(typeof(DashboardPage));
                     break;

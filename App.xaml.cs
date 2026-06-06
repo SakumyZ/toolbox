@@ -4,6 +4,8 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using System.Threading.Tasks;
+using System.IO;
 using ToolBox.Services;
 using WinRT.Interop;
 
@@ -91,7 +93,25 @@ namespace ToolBox
         public App()
         {
             System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
-            InitializeComponent();
+            // 注册全局异常以便尽早记录问题
+            AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+            {
+                TryWriteStartupLog(e.ExceptionObject?.ToString() ?? "UnhandledException");
+            };
+            TaskScheduler.UnobservedTaskException += (s, e) =>
+            {
+                TryWriteStartupLog(e.Exception?.ToString() ?? "UnobservedTaskException");
+            };
+
+            try
+            {
+                InitializeComponent();
+            }
+            catch (Exception ex)
+            {
+                TryWriteStartupLog(ex.ToString());
+                throw;
+            }
         }
 
         /// <summary>
@@ -113,11 +133,19 @@ namespace ToolBox
                 return;
             }
 
-            _window = new MainWindow();
-            MainWindowInstance = _window;
-            _window.Activate();
-            InitializeDashboardProviders();
-            ReminderSchedulerService.Instance.Start();
+            try
+            {
+                _window = new MainWindow();
+                MainWindowInstance = _window;
+                _window.Activate();
+                InitializeDashboardProviders();
+                ReminderSchedulerService.Instance.Start();
+            }
+            catch (Exception ex)
+            {
+                TryWriteStartupLog(ex.ToString());
+                throw;
+            }
 
             _window.Closed += (sender, eventArgs) =>
             {
@@ -125,6 +153,18 @@ namespace ToolBox
                 _mutex?.Dispose();
                 _mutex = null;
             };
+        }
+
+        private static void TryWriteStartupLog(string content)
+        {
+            try
+            {
+                var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ToolBox");
+                Directory.CreateDirectory(appData);
+                var logPath = Path.Combine(appData, "startup_error.txt");
+                File.AppendAllText(logPath, DateTime.Now.ToString("o") + "\n" + content + "\n\n");
+            }
+            catch { }
         }
 
         /// <summary>

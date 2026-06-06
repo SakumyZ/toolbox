@@ -8,17 +8,16 @@
     mc:Ignorable="d"
     Title="ToolBox"
     >
-
     <Window.SystemBackdrop>
         <MicaBackdrop />
     </Window.SystemBackdrop>
-
     <Grid>
         <NavigationView
             x:Name="NavView"
             PaneDisplayMode="Auto"
             SelectionChanged="NavView_SelectionChanged"
             Loaded="NavView_Loaded"
+            IsSettingsVisible="False"
         >
             <NavigationView.MenuItems>
                 <NavigationViewItem Tag="Dashboard" Icon="Home" Content="Dashboard" />
@@ -60,9 +59,15 @@
                 <FontIcon Glyph="&#xE943;" />
               </NavigationViewItem.Icon>
             </NavigationViewItem>
-            <NavigationViewItem Tag="CleanCache" Icon="Delete" Content="Clean Cache" />
+            <NavigationViewItem Tag="CleanCache" Icon="Delete" Content="缓存清理" />
           </NavigationView.MenuItems>
-
+            <NavigationView.FooterMenuItems>
+                <NavigationViewItem Tag="Settings" Content="设置">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE713;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.FooterMenuItems>
             <Frame x:Name="ContentFrame" />
         </NavigationView>
     </Grid>
