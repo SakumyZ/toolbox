@@ -1,8 +1,13 @@
 using System;
+using System.IO;
+using System.Threading.Tasks;
+using Windows.Storage.Pickers;
+using WinRT.Interop;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using ToolBox.Models;
 using ToolBox.Services;
+using Serilog;
 
 namespace ToolBox.Views
 {
@@ -63,6 +68,7 @@ namespace ToolBox.Views
 
             UpdateStaticPreview();
             UpdatePreviewTipText();
+            LoadWebDavSettings();
         }
 
         private void CategoryBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -331,6 +337,322 @@ namespace ToolBox.Views
                 CloseButtonText = "确定",
                 XamlRoot = XamlRoot
             };
+            _ = dialog.ShowAsync();
+        }
+
+        // ========== 备份与同步 ==========
+
+        private void LoadWebDavSettings()
+        {
+            try
+            {
+                var backupService = new BackupService();
+                var webdav = backupService.GetWebDavSettings();
+                WebDavUrlBox.Text = webdav.Url;
+                WebDavUsernameBox.Text = webdav.Username;
+                WebDavPasswordBox.Password = webdav.Password;
+                WebDavAutoSyncCheckBox.IsChecked = webdav.IsAutoSyncEnabled;
+                WebDavDirectoryBox.Text = webdav.Directory;
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "SettingsPage: 加载 WebDAV 设置失败");
+            }
+        }
+
+        private void SaveWebDavSettings_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var backupService = new BackupService();
+                var settings = new WebDavSettings
+                {
+                    Url = WebDavUrlBox.Text.Trim(),
+                    Username = WebDavUsernameBox.Text.Trim(),
+                    Password = WebDavPasswordBox.Password,
+                    IsAutoSyncEnabled = WebDavAutoSyncCheckBox.IsChecked == true,
+                    Directory = WebDavDirectoryBox.Text.Trim()
+                };
+                backupService.SaveWebDavSettings(settings);
+                ShowStatus("WebDAV 设置已保存。");
+            }
+            catch (Exception ex)
+            {
+                ShowErrorDialog("保存失败", ex.Message);
+            }
+        }
+
+        private async void TestWebDavConnection_Click(object sender, RoutedEventArgs e)
+        {
+            SetSyncStatus("正在测试连接 WebDAV 服务器...", isError: false);
+            try
+            {
+                var url = WebDavUrlBox.Text.Trim();
+                var username = WebDavUsernameBox.Text.Trim();
+                var password = WebDavPasswordBox.Password;
+                var directory = WebDavDirectoryBox.Text.Trim();
+
+                var backupService = new BackupService();
+                var ok = await backupService.TestWebDavConnectionAsync(url, username, password, directory);
+                if (ok)
+                {
+                    SetSyncStatus("连接测试成功！可以正常与 WebDAV 服务器通信。", isError: false);
+                }
+                else
+                {
+                    SetSyncStatus("连接测试失败，请检查 URL、账号和密码是否正确，或者网络是否连通。", isError: true);
+                }
+            }
+            catch (Exception ex)
+            {
+                SetSyncStatus($"连接测试异常: {ex.Message}", isError: true);
+            }
+        }
+
+        private async void SyncWebDavNow_Click(object sender, RoutedEventArgs e)
+        {
+            SetSyncStatus("正在双向同步配置...", isError: false);
+            try
+            {
+                var url = WebDavUrlBox.Text.Trim();
+                var username = WebDavUsernameBox.Text.Trim();
+                var password = WebDavPasswordBox.Password;
+                var directory = WebDavDirectoryBox.Text.Trim();
+
+                if (string.IsNullOrWhiteSpace(url))
+                {
+                    SetSyncStatus("同步失败：服务器地址 (URL) 不能为空。", isError: true);
+                    return;
+                }
+
+                var backupService = new BackupService();
+                var (result, message) = await backupService.SyncWithWebDavAsync(url, username, password, directory);
+                
+                if (result == SyncResult.Failed)
+                {
+                    SetSyncStatus(message, isError: true);
+                }
+                else
+                {
+                    SetSyncStatus($"同步完成：{message}", isError: false);
+                    if (result == SyncResult.Downloaded)
+                    {
+                        ShowRestartPromptDialog();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                SetSyncStatus($"同步失败：{ex.Message}", isError: true);
+            }
+        }
+
+        private async void UploadWebDav_Click(object sender, RoutedEventArgs e)
+        {
+            SetSyncStatus("正在上传本地备份到云端...", isError: false);
+            var tempZip = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ToolBox", "TempUpload.zip");
+            try
+            {
+                var url = WebDavUrlBox.Text.Trim();
+                var username = WebDavUsernameBox.Text.Trim();
+                var password = WebDavPasswordBox.Password;
+                var directory = WebDavDirectoryBox.Text.Trim();
+
+                if (string.IsNullOrWhiteSpace(url))
+                {
+                    SetSyncStatus("上传失败：服务器地址 (URL) 不能为空。", isError: true);
+                    return;
+                }
+
+                var backupService = new BackupService();
+                backupService.CreateBackupZip(tempZip);
+                await backupService.UploadBackupToWebDavAsync(url, username, password, directory, tempZip);
+                SetSyncStatus("已成功将本地备份上传至 WebDAV 云端。", isError: false);
+            }
+            catch (Exception ex)
+            {
+                SetSyncStatus($"上传备份失败：{ex.Message}", isError: true);
+            }
+            finally
+            {
+                if (File.Exists(tempZip)) File.Delete(tempZip);
+            }
+        }
+
+        private async void DownloadWebDav_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new ContentDialog
+            {
+                Title = "确认从云端恢复",
+                Content = "从云端下载并还原配置将覆盖本地所有现有数据（定时器、代码片段、脚本等），应用即将重启。确认恢复吗？",
+                PrimaryButtonText = "确认恢复",
+                CloseButtonText = "取消",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = XamlRoot
+            };
+
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            {
+                return;
+            }
+
+            SetSyncStatus("正在从云端恢复备份...", isError: false);
+            var tempZip = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ToolBox", "TempDownload.zip");
+            try
+            {
+                var url = WebDavUrlBox.Text.Trim();
+                var username = WebDavUsernameBox.Text.Trim();
+                var password = WebDavPasswordBox.Password;
+                var directory = WebDavDirectoryBox.Text.Trim();
+
+                if (string.IsNullOrWhiteSpace(url))
+                {
+                    SetSyncStatus("拉取失败：服务器地址 (URL) 不能为空。", isError: true);
+                    return;
+                }
+
+                var backupService = new BackupService();
+                await backupService.DownloadBackupFromWebDavAsync(url, username, password, directory, tempZip);
+                backupService.RestoreFromZip(tempZip);
+                
+                SetSyncStatus("配置还原成功，正在重启应用...", isError: false);
+                ShowRestartPromptDialog();
+            }
+            catch (Exception ex)
+            {
+                SetSyncStatus($"拉取还原失败：{ex.Message}", isError: true);
+            }
+            finally
+            {
+                if (File.Exists(tempZip)) File.Delete(tempZip);
+            }
+        }
+
+        private async void ExportBackup_Click(object sender, RoutedEventArgs e)
+        {
+            var picker = new FileSavePicker();
+            picker.SuggestedStartLocation = PickerLocationId.Downloads;
+            picker.FileTypeChoices.Add("Zip 压缩包", new System.Collections.Generic.List<string> { ".zip" });
+            picker.SuggestedFileName = $"ToolBox_Backup_{DateTime.Now:yyyyMMdd_HHmmss}";
+
+            var window = App.MainWindowInstance;
+            if (window != null)
+            {
+                InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(window));
+            }
+
+            var file = await picker.PickSaveFileAsync();
+            if (file == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var backupService = new BackupService();
+                backupService.CreateBackupZip(file.Path);
+                ShowStatus("本地备份导出成功。");
+            }
+            catch (Exception ex)
+            {
+                ShowErrorDialog("备份失败", ex.Message);
+            }
+        }
+
+        private async void ImportBackup_Click(object sender, RoutedEventArgs e)
+        {
+            var picker = new FileOpenPicker();
+            picker.SuggestedStartLocation = PickerLocationId.Downloads;
+            picker.FileTypeFilter.Add(".zip");
+
+            var window = App.MainWindowInstance;
+            if (window != null)
+            {
+                InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(window));
+            }
+
+            var file = await picker.PickSingleFileAsync();
+            if (file == null)
+            {
+                return;
+            }
+
+            var confirmDialog = new ContentDialog
+            {
+                Title = "确认导入备份",
+                Content = "导入该备份将完全覆盖本地现有的配置数据库和脚本文件，操作不可逆。确认导入并重启应用吗？",
+                PrimaryButtonText = "确认导入",
+                CloseButtonText = "取消",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = XamlRoot
+            };
+
+            if (await confirmDialog.ShowAsync() != ContentDialogResult.Primary)
+            {
+                return;
+            }
+
+            try
+            {
+                var backupService = new BackupService();
+                backupService.RestoreFromZip(file.Path);
+                ShowRestartPromptDialog();
+            }
+            catch (Exception ex)
+            {
+                ShowErrorDialog("导入失败", ex.Message);
+            }
+        }
+
+        private void SetSyncStatus(string text, bool isError)
+        {
+            SyncStatusText.Text = text;
+            SyncStatusText.Foreground = isError
+                ? new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Red)
+                : (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
+        }
+
+        private void ShowStatus(string message)
+        {
+            var dialog = new ContentDialog
+            {
+                Title = "操作成功",
+                Content = message,
+                CloseButtonText = "确定",
+                XamlRoot = XamlRoot
+            };
+            _ = dialog.ShowAsync();
+        }
+
+        private void ShowErrorDialog(string title, string message)
+        {
+            var dialog = new ContentDialog
+            {
+                Title = title,
+                Content = message,
+                CloseButtonText = "确定",
+                XamlRoot = XamlRoot
+            };
+            _ = dialog.ShowAsync();
+        }
+
+        private void ShowRestartPromptDialog()
+        {
+            var dialog = new ContentDialog
+            {
+                Title = "需要重启应用",
+                Content = "配置导入或恢复成功！应用需要立即重启以加载新数据。",
+                PrimaryButtonText = "立即重启",
+                CloseButtonText = "稍后手动重启",
+                DefaultButton = ContentDialogButton.Primary,
+                XamlRoot = XamlRoot
+            };
+
+            dialog.PrimaryButtonClick += (s, args) =>
+            {
+                Microsoft.Windows.AppLifecycle.AppInstance.Restart(string.Empty);
+            };
+
             _ = dialog.ShowAsync();
         }
     }

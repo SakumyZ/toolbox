@@ -11,19 +11,21 @@
         <TextBlock Text="设置" Style="{StaticResource TitleTextBlockStyle}" Margin="0,0,0,12" />
         <!-- 设置内容 -->
         <ScrollViewer Grid.Row="1">
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="24" Margin="0,0,0,24">
-                <!-- 左侧：设置内容 -->
-                <StackPanel Spacing="20">
-                    <!-- 通知设置卡片 -->
-                    <Grid Padding="16,14" CornerRadius="8"
-                          Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                          BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
-                          RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
-                        <TextBlock Text="通知样式设置" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,12" />
+            <StackPanel Spacing="20" Margin="0,0,12,24">
+                <!-- 通知设置卡片 -->
+                <Grid Padding="16,14" CornerRadius="8"
+                      Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                      BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                      ColumnDefinitions="*,Auto" ColumnSpacing="24">
+                    
+                    <!-- 左侧：控件设置 -->
+                    <StackPanel Spacing="16">
+                        <TextBlock Text="通知样式设置" Style="{StaticResource SubtitleTextBlockStyle}" />
+                        
                         <!-- 预览通知种类 -->
-                        <Grid Grid.Row="1" ColumnDefinitions="Auto,*" Margin="0,0,0,16">
-                            <TextBlock Text="预览通知种类" VerticalAlignment="Center" MinWidth="100" />
-                            <ComboBox x:Name="CategoryBox" Grid.Column="1" SelectedIndex="0" Width="150"
+                        <Grid ColumnDefinitions="160,*" Margin="0,0,0,12">
+                            <TextBlock Text="预览通知种类" VerticalAlignment="Center" />
+                            <ComboBox x:Name="CategoryBox" Grid.Column="1" SelectedIndex="0" Width="180"
                                       SelectionChanged="CategoryBox_SelectionChanged">
                                 <ComboBoxItem>喝水提醒</ComboBoxItem>
                                 <ComboBoxItem>起身活动</ComboBoxItem>
@@ -32,36 +34,40 @@
                                 <ComboBoxItem>自定义</ComboBoxItem>
                             </ComboBox>
                         </Grid>
+
                         <!-- 显示样式 -->
-                        <Grid Grid.Row="2" ColumnDefinitions="Auto,*" Margin="0,0,0,16">
-                            <TextBlock Text="显示样式" VerticalAlignment="Center" MinWidth="100" />
-                            <ComboBox x:Name="DisplayStyleBox" Grid.Column="1" SelectedIndex="0" Width="150"
+                        <Grid ColumnDefinitions="160,*" Margin="0,0,0,12">
+                            <TextBlock Text="显示样式" VerticalAlignment="Center" />
+                            <ComboBox x:Name="DisplayStyleBox" Grid.Column="1" SelectedIndex="0" Width="180"
                                       SelectionChanged="DisplayStyleBox_SelectionChanged">
                                 <ComboBoxItem Tag="0">标准</ComboBoxItem>
                                 <ComboBoxItem Tag="1">紧凑</ComboBoxItem>
                             </ComboBox>
                         </Grid>
+
                         <!-- 颜色主题 -->
-                        <Grid Grid.Row="3" ColumnDefinitions="Auto,*" Margin="0,0,0,16">
-                            <TextBlock Text="颜色主题" VerticalAlignment="Center" MinWidth="100" />
-                            <ComboBox x:Name="ColorThemeBox" Grid.Column="1" SelectedIndex="0" Width="150"
+                        <Grid ColumnDefinitions="160,*" Margin="0,0,0,12">
+                            <TextBlock Text="颜色主题" VerticalAlignment="Center" />
+                            <ComboBox x:Name="ColorThemeBox" Grid.Column="1" SelectedIndex="0" Width="180"
                                       SelectionChanged="ColorThemeBox_SelectionChanged">
                                 <ComboBoxItem Tag="0">系统</ComboBoxItem>
                                 <ComboBoxItem Tag="1">浅色</ComboBoxItem>
                                 <ComboBoxItem Tag="2">深色</ComboBoxItem>
                             </ComboBox>
                         </Grid>
+
                         <!-- 自动关闭时长 -->
-                        <Grid Grid.Row="4" ColumnDefinitions="Auto,*" Margin="0,0,0,16">
-                            <TextBlock Text="自动关闭时长（毫秒）" VerticalAlignment="Center" MinWidth="100" />
-                            <NumberBox x:Name="AutoCloseMillisecondsBox" Grid.Column="1" Value="6000" Width="150" HorizontalAlignment="Left"
+                        <Grid ColumnDefinitions="160,*" Margin="0,0,0,12">
+                            <TextBlock Text="自动关闭时长（毫秒）" VerticalAlignment="Center" />
+                            <NumberBox x:Name="AutoCloseMillisecondsBox" Grid.Column="1" Value="6000" Width="180" HorizontalAlignment="Left"
                                        Minimum="100" Maximum="600000"
                                        SpinButtonPlacementMode="Compact"
                                        LargeChange="1000" SmallChange="100"
                                        ValueChanged="AutoCloseMillisecondsBox_ValueChanged" />
                         </Grid>
+
                         <!-- 操作按钮 -->
-                        <Grid Grid.Row="5" ColumnDefinitions="Auto,Auto" ColumnSpacing="8">
+                        <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="8" Margin="0,8,0,0">
                             <Button Click="Preview_Click">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <FontIcon Glyph="&#xE890;" FontSize="12" />
@@ -75,84 +81,178 @@
                                 </StackPanel>
                             </Button>
                         </Grid>
-                        <TextBlock x:Name="PreviewTipText" Grid.Row="6" Margin="0,12,0,0"
+
+                        <TextBlock x:Name="PreviewTipText" Margin="0,8,0,0"
                                    Text="提示：预览通知会按当前设置显示一条样本通知，6 秒后自动关闭。"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    TextWrapping="Wrap" />
-                    </Grid>
+                    </StackPanel>
 
-                    <!-- 日志管理卡片 -->
-                    <Grid Padding="16,14" CornerRadius="8"
-                          Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                          BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
-                          RowDefinitions="Auto,Auto,Auto" Margin="0,10,0,0">
-                        <TextBlock Text="日志管理" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,12" />
-                        <!-- 日志级别 -->
-                        <Grid Grid.Row="1" ColumnDefinitions="Auto,*" Margin="0,0,0,16">
-                            <TextBlock Text="日志级别" VerticalAlignment="Center" MinWidth="100" />
-                            <ComboBox x:Name="LogLevelBox" Grid.Column="1" SelectedIndex="2" Width="150"
-                                      SelectionChanged="LogLevelBox_SelectionChanged">
-                                <ComboBoxItem Tag="Verbose">Verbose (详细)</ComboBoxItem>
-                                <ComboBoxItem Tag="Debug">Debug (调试)</ComboBoxItem>
-                                <ComboBoxItem Tag="Information">Information (普通)</ComboBoxItem>
-                                <ComboBoxItem Tag="Warning">Warning (警告)</ComboBoxItem>
-                                <ComboBoxItem Tag="Error">Error (错误)</ComboBoxItem>
-                            </ComboBox>
-                        </Grid>
-                        <!-- 操作按钮 -->
-                        <Grid Grid.Row="2" ColumnDefinitions="Auto,Auto" ColumnSpacing="8">
-                            <Button Click="OpenLogFolder_Click">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <FontIcon Glyph="&#xE8B7;" FontSize="12" />
-                                    <TextBlock Text="打开日志文件夹" />
-                                </StackPanel>
-                            </Button>
-                            <Button Grid.Column="1" Click="ClearLogs_Click">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <FontIcon Glyph="&#xE74D;" FontSize="12" />
-                                    <TextBlock Text="清理旧日志" />
-                                </StackPanel>
-                            </Button>
-                        </Grid>
-                    </Grid>
-                </StackPanel>
-
-                <!-- 右侧：静态预览 -->
-                <StackPanel Grid.Column="1" Width="420" Spacing="12" VerticalAlignment="Top" Margin="0,0,12,0">
-                    <TextBlock Text="静态样式预览" Style="{StaticResource SubtitleTextBlockStyle}" />
-                    <Border x:Name="StaticPreviewBorder"
-                            Width="420" Height="120"
-                            CornerRadius="8"
-                            BorderThickness="1"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="96" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <!-- 左侧图片栏 -->
-                            <Border x:Name="PreviewImageColumnBorder" Grid.Column="0" CornerRadius="8,0,0,8" Background="#42A5F5">
-                                <Grid>
-                                    <Border x:Name="PreviewImageOverlay" Background="#22000000" />
-                                    <Image x:Name="PreviewImageControl" Margin="12" Stretch="Uniform" />
+                    <!-- 右侧：静态样式预览 -->
+                    <StackPanel Grid.Column="1" Width="420" Spacing="12" VerticalAlignment="Top">
+                        <TextBlock Text="静态样式预览" Style="{StaticResource SubtitleTextBlockStyle}" />
+                        <Border x:Name="StaticPreviewBorder"
+                                Width="420" Height="120"
+                                CornerRadius="8"
+                                BorderThickness="1"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="96" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <!-- 左侧图片栏 -->
+                                <Border x:Name="PreviewImageColumnBorder" Grid.Column="0" CornerRadius="8,0,0,8" Background="#42A5F5">
+                                    <Grid>
+                                        <Border x:Name="PreviewImageOverlay" Background="#22000000" />
+                                        <Image x:Name="PreviewImageControl" Margin="12" Stretch="Uniform" />
+                                    </Grid>
+                                </Border>
+                                <!-- 右侧详情栏 -->
+                                <Grid Grid.Column="1" Padding="14,12,12,10" RowDefinitions="Auto,*,Auto">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock x:Name="PreviewTitleText" Text="标题" FontSize="15" FontWeight="SemiBold" MaxLines="1" TextTrimming="CharacterEllipsis" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                                        <Button Grid.Column="1" Width="24" Height="24" Padding="0" Background="Transparent" BorderThickness="0" IsEnabled="False">
+                                            <FontIcon Glyph="&#xE711;" FontSize="10" />
+                                        </Button>
+                                    </Grid>
+                                    <TextBlock x:Name="PreviewMessageText" Grid.Row="1" Margin="0,4,0,6" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" MaxLines="2" TextWrapping="WrapWholeWords" Text="正文" />
+                                    <TextBlock x:Name="PreviewFooterText" Grid.Row="2" FontSize="11" Foreground="{ThemeResource TextFillColorTertiaryBrush}" Text="12:00" />
                                 </Grid>
-                            </Border>
-                            <!-- 右侧详情栏 -->
-                            <Grid Grid.Column="1" Padding="14,12,12,10" RowDefinitions="Auto,*,Auto">
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock x:Name="PreviewTitleText" Text="标题" FontSize="15" FontWeight="SemiBold" MaxLines="1" TextTrimming="CharacterEllipsis" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                                    <Button Grid.Column="1" Width="24" Height="24" Padding="0" Background="Transparent" BorderThickness="0" IsEnabled="False">
-                                        <FontIcon Glyph="&#xE711;" FontSize="10" />
-                                    </Button>
-                                </Grid>
-                                <TextBlock x:Name="PreviewMessageText" Grid.Row="1" Margin="0,4,0,6" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" MaxLines="2" TextWrapping="WrapWholeWords" Text="正文" />
-                                <TextBlock x:Name="PreviewFooterText" Grid.Row="2" FontSize="11" Foreground="{ThemeResource TextFillColorTertiaryBrush}" Text="12:00" />
                             </Grid>
-                        </Grid>
-                    </Border>
-                </StackPanel>
-            </Grid>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+
+                <!-- 日志管理卡片 -->
+                <Grid Padding="16,14" CornerRadius="8"
+                      Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                      BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                      RowDefinitions="Auto,Auto,Auto" Margin="0,10,0,0">
+                    <TextBlock Text="日志管理" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,12" />
+                    <!-- 日志级别 -->
+                    <Grid Grid.Row="1" ColumnDefinitions="Auto,*" Margin="0,0,0,16">
+                        <TextBlock Text="日志级别" VerticalAlignment="Center" MinWidth="100" />
+                        <ComboBox x:Name="LogLevelBox" Grid.Column="1" SelectedIndex="2" Width="150"
+                                  SelectionChanged="LogLevelBox_SelectionChanged">
+                            <ComboBoxItem Tag="Verbose">Verbose (详细)</ComboBoxItem>
+                            <ComboBoxItem Tag="Debug">Debug (调试)</ComboBoxItem>
+                            <ComboBoxItem Tag="Information">Information (普通)</ComboBoxItem>
+                            <ComboBoxItem Tag="Warning">Warning (警告)</ComboBoxItem>
+                            <ComboBoxItem Tag="Error">Error (错误)</ComboBoxItem>
+                        </ComboBox>
+                    </Grid>
+                    <!-- 操作按钮 -->
+                    <Grid Grid.Row="2" ColumnDefinitions="Auto,Auto" ColumnSpacing="8">
+                        <Button Click="OpenLogFolder_Click">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE8B7;" FontSize="12" />
+                                <TextBlock Text="打开日志文件夹" />
+                            </StackPanel>
+                        </Button>
+                        <Button Grid.Column="1" Click="ClearLogs_Click">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE74D;" FontSize="12" />
+                                <TextBlock Text="清理旧日志" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+                </Grid>
+
+                <!-- 备份与同步卡片 -->
+                <Grid Padding="16,14" CornerRadius="8"
+                      Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                      BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                      Margin="0,10,0,0">
+                    <StackPanel Spacing="16">
+                        <TextBlock Text="备份与同步" Style="{StaticResource SubtitleTextBlockStyle}" />
+
+                        <!-- 本地备份与恢复 -->
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="本地备份" FontWeight="SemiBold" FontSize="14" />
+                            <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="8">
+                                <Button Click="ExportBackup_Click">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon Glyph="&#xE898;" FontSize="12" />
+                                        <TextBlock Text="导出本地备份 (.zip)" />
+                                    </StackPanel>
+                                </Button>
+                                <Button Grid.Column="1" Click="ImportBackup_Click">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon Glyph="&#xE896;" FontSize="12" />
+                                        <TextBlock Text="导入本地备份 (.zip)" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+                        </StackPanel>
+
+                        <MenuFlyoutSeparator />
+
+                        <!-- WebDAV 同步 -->
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="WebDAV 同步设置" FontWeight="SemiBold" FontSize="14" />
+                            
+                            <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="12">
+                                <!-- 服务器地址 -->
+                                <TextBlock Text="服务器地址 (URL)" VerticalAlignment="Center" />
+                                <TextBox x:Name="WebDavUrlBox" Grid.Column="1" PlaceholderText="例如: https://dav.jianguoyun.com/dav/" />
+
+                                <!-- 用户名 -->
+                                <TextBlock Grid.Row="1" Text="用户名" VerticalAlignment="Center" />
+                                <TextBox x:Name="WebDavUsernameBox" Grid.Row="1" Grid.Column="1" PlaceholderText="WebDAV 账号用户名" />
+
+                                <!-- 密码 -->
+                                <TextBlock Grid.Row="2" Text="密码" VerticalAlignment="Center" />
+                                <PasswordBox x:Name="WebDavPasswordBox" Grid.Row="2" Grid.Column="1" PasswordChar="●" PlaceholderText="WebDAV 密码或应用授权密码" />
+
+                                <!-- 备份目录 -->
+                                <TextBlock Grid.Row="3" Text="备份目录 (可选)" VerticalAlignment="Center" />
+                                <TextBox x:Name="WebDavDirectoryBox" Grid.Row="3" Grid.Column="1" PlaceholderText="例如: ToolBox/Backup (留空则直接上传至根目录)" />
+                            </Grid>
+
+                            <!-- 自动同步选项 -->
+                            <CheckBox x:Name="WebDavAutoSyncCheckBox" Content="启用自动同步 (应用启动时和关闭时自动进行双向同步)" />
+
+                            <!-- WebDAV 操作按钮 -->
+                            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8">
+                                <Button Click="SaveWebDavSettings_Click">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon Glyph="&#xE74E;" FontSize="12" />
+                                        <TextBlock Text="保存设置" />
+                                    </StackPanel>
+                                </Button>
+                                <Button Grid.Column="1" Click="TestWebDavConnection_Click">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon Glyph="&#xE12B;" FontSize="12" />
+                                        <TextBlock Text="测试连接" />
+                                    </StackPanel>
+                                </Button>
+                                <Button Grid.Column="2" Click="SyncWebDavNow_Click" Style="{StaticResource AccentButtonStyle}">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon Glyph="&#xE895;" FontSize="12" />
+                                        <TextBlock Text="立即同步" />
+                                    </StackPanel>
+                                </Button>
+                                <Button Grid.Column="3" Click="UploadWebDav_Click">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon Glyph="&#xE898;" FontSize="12" />
+                                        <TextBlock Text="备份到云端" />
+                                    </StackPanel>
+                                </Button>
+                                <Button Grid.Column="4" Click="DownloadWebDav_Click">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon Glyph="&#xE896;" FontSize="12" />
+                                        <TextBlock Text="从云端恢复" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+
+                            <TextBlock x:Name="SyncStatusText" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
         </ScrollViewer>
     </Grid>
 </Page>

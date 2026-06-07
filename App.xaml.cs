@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System.Threading.Tasks;
 using System.IO;
+using ToolBox.Models;
 using ToolBox.Services;
 using WinRT.Interop;
 using Serilog;
@@ -153,6 +154,42 @@ namespace ToolBox
 
                 // 数据库和服务就绪后，从 AppSettings 载入用户设置的日志等级
                 LogService.LoadLevelFromSettings();
+
+                // 启动后台自动同步
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var backupService = new BackupService();
+                        var webdav = backupService.GetWebDavSettings();
+                        if (webdav.IsAutoSyncEnabled && !string.IsNullOrWhiteSpace(webdav.Url))
+                        {
+                            Log.Information("App OnLaunched: 正在执行 WebDAV 启动自动同步...");
+                            var (result, message) = await backupService.SyncWithWebDavAsync(webdav.Url, webdav.Username, webdav.Password, webdav.Directory);
+                            Log.Information("App OnLaunched: WebDAV 启动自动同步完成. 结果 = {Result}, 消息 = {Message}", result, message);
+                            
+                            if (result == SyncResult.Downloaded)
+                            {
+                                // 提示用户重启应用
+                                MainWindowInstance?.DispatcherQueue.TryEnqueue(() =>
+                                {
+                                    var ns = new NotificationService();
+                                    var reminder = new Reminder
+                                    {
+                                        Title = "云端配置已同步",
+                                        Message = "已自动从云端同步最新配置。重启应用后生效。",
+                                        Category = ReminderPresets.Custom
+                                    };
+                                    ns.ShowReminderNotification(reminder, out _);
+                                });
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Error(ex, "App OnLaunched: WebDAV 启动自动同步失败");
+                    }
+                });
             }
             catch (Exception ex)
             {
@@ -163,6 +200,57 @@ namespace ToolBox
             _window.Closed += (sender, eventArgs) =>
             {
                 Log.Information("主窗口已关闭，正在卸载服务并释放资源...");
+
+                // 退出时执行 WebDAV 自动同步（同步上传）
+                try
+                {
+                    var backupService = new BackupService();
+                    var webdav = backupService.GetWebDavSettings();
+                    if (webdav.IsAutoSyncEnabled && !string.IsNullOrWhiteSpace(webdav.Url))
+                    {
+                        Log.Information("App Closed: 检测到自动同步已启用，正在尝试同步本地数据到云端...");
+                        var syncTask = Task.Run(async () =>
+                        {
+                            var activeDbPath = Path.Combine(
+                                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                                "ToolBox", "snippets.db");
+                            var localTime = File.GetLastWriteTime(activeDbPath);
+                            
+                            var remoteTime = await backupService.GetRemoteBackupLastModifiedAsync(webdav.Url, webdav.Username, webdav.Password, webdav.Directory);
+                            if (remoteTime == null || localTime > remoteTime.Value.AddSeconds(2))
+                            {
+                                var tempZipPath = Path.Combine(
+                                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                                    "ToolBox", $"TempExitSyncBackup_{Guid.NewGuid():N}.zip");
+                                try
+                                {
+                                    backupService.CreateBackupZip(tempZipPath);
+                                    await backupService.UploadBackupToWebDavAsync(webdav.Url, webdav.Username, webdav.Password, webdav.Directory, tempZipPath);
+                                    Log.Information("App Closed: 已自动将本地最新配置上传至云端");
+                                }
+                                finally
+                                {
+                                    if (File.Exists(tempZipPath))
+                                    {
+                                        File.Delete(tempZipPath);
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                Log.Information("App Closed: 本地配置未新于云端，无需上传");
+                            }
+                        });
+
+                        // 同步等待至多 6 秒
+                        syncTask.Wait(TimeSpan.FromSeconds(6));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "App Closed: WebDAV 自动同步退出时发生异常");
+                }
+
                 ReminderSchedulerService.Instance.Dispose();
                 _mutex?.Dispose();
                 _mutex = null;
