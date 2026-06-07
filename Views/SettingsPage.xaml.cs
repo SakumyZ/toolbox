@@ -86,7 +86,8 @@ namespace ToolBox.Views
                 Title = "通知预览",
                 Message = $"样式: {settings.DisplayStyle}, 主题: {settings.ColorTheme}",
                 FooterText = System.DateTime.Now.ToString("HH:mm"),
-                ImageUri = "ms-appx:///Assets/water.svg",
+                ImageUri = "ms-appx:///Assets/default.svg",
+                IconBackgroundColor = "#90A4AE",
                 DisplayStyle = settings.DisplayStyle,
                 ColorTheme = settings.ColorTheme,
                 AutoCloseMilliseconds = 3000  // 预览通知 3 秒后关闭

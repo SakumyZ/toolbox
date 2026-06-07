@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <!-- Green Sand Gradient -->
+    <linearGradient id="sandGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#81C784" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#2E7D32" stop-opacity="0.95"/>
+    </linearGradient>
+
+    <!-- Glass Body Gradient -->
+    <linearGradient id="glassBodyGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.2"/>
+      <stop offset="25%" stop-color="#FFFFFF" stop-opacity="0.05"/>
+      <stop offset="50%" stop-color="#FFFFFF" stop-opacity="0.0"/>
+      <stop offset="75%" stop-color="#FFFFFF" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.2"/>
+    </linearGradient>
+
+    <!-- Glass Outline Gradient -->
+    <linearGradient id="glassOutlineGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.9"/>
+      <stop offset="50%" stop-color="#E0E0E0" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#B0BEC5" stop-opacity="0.8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Hourglass Base & Top (Glass/Metallic plates) -->
+  <rect x="30" y="18" width="40" height="5" rx="1.5" fill="url(#glassOutlineGrad)" opacity="0.85"/>
+  <rect x="30" y="77" width="40" height="5" rx="1.5" fill="url(#glassOutlineGrad)" opacity="0.85"/>
+
+  <!-- Sand (Inside) -->
+  <!-- Top remaining sand (draining) -->
+  <path d="M 38,25 C 38,32 46,38 50,38 C 54,38 62,32 62,25 Z" fill="url(#sandGrad)" opacity="0.4"/>
+  <!-- Falling stream -->
+  <line x1="50" y1="36" x2="50" y2="70" stroke="url(#sandGrad)" stroke-width="2" stroke-linecap="round" opacity="0.8"/>
+  <!-- Bottom accumulated sand -->
+  <path d="M 36.5,77 C 36.5,69 43,62 50,62 C 57,62 63.5,69 63.5,77 Z" fill="url(#sandGrad)"/>
+
+  <!-- Glass Bulb Body -->
+  <path d="M 35,23 L 65,23 C 65,36 56,47 54,50 C 56,53 65,64 65,77 L 35,77 C 35,64 44,53 46,50 C 44,47 35,36 35,23 Z" fill="url(#glassBodyGrad)" stroke="url(#glassOutlineGrad)" stroke-width="2.5" />
+
+  <!-- Highlights / Reflections -->
+  <path d="M 37.5,27 C 37.5,35 44,43 47,46" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+  <path d="M 37.5,73 C 37.5,65 44,57 47,54" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+  <circle cx="39" cy="30" r="1.5" fill="#FFFFFF" opacity="0.7"/>
+  <circle cx="61" cy="70" r="1" fill="#FFFFFF" opacity="0.4"/>
+
+  <!-- Sparkles / Energy dots around (Active movement) -->
+  <circle cx="24" cy="45" r="2.2" fill="#81C784" opacity="0.8"/>
+  <circle cx="78" cy="55" r="1.8" fill="#66BB6A" opacity="0.7"/>
+  <path d="M 74,36 L 76,38 M 76,36 L 74,38" stroke="#81C784" stroke-width="1.5" stroke-linecap="round"/>
+</svg>

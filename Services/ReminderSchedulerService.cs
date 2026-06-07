@@ -355,22 +355,48 @@ namespace ToolBox.Services
                     var settingsService = new NotificationSettingsService();
                     var settings = settingsService.GetSettings();
 
-                    var imageUri = "ms-appx:///Assets/Square150x150Logo.scale-200.png";
-                    if (string.Equals(reminder.Category, "喝水", System.StringComparison.OrdinalIgnoreCase) ||
-                        (!string.IsNullOrEmpty(reminder.Title) && reminder.Title.Contains("喝水")) ||
-                        (!string.IsNullOrEmpty(reminder.Message) && reminder.Message.Contains("喝水")))
+                    var imageUri = "ms-appx:///Assets/default.svg";
+                    var iconBgColor = "#90A4AE"; // 默认灰色背景
+                    
+                    var category = reminder.Category ?? string.Empty;
+                    var title = reminder.Title ?? string.Empty;
+                    var message = reminder.Message ?? string.Empty;
+
+                    if (string.Equals(category, ReminderPresets.Water, System.StringComparison.OrdinalIgnoreCase) ||
+                        title.Contains("喝水") || message.Contains("喝水"))
                     {
                         imageUri = "ms-appx:///Assets/water.svg";
+                        iconBgColor = "#42A5F5"; // 蓝色
+                    }
+                    else if (string.Equals(category, ReminderPresets.StandUp, System.StringComparison.OrdinalIgnoreCase) ||
+                             title.Contains("起身") || title.Contains("活动") || 
+                             message.Contains("起身") || message.Contains("活动"))
+                    {
+                        imageUri = "ms-appx:///Assets/standup.svg";
+                        iconBgColor = "#66BB6A"; // 绿色
+                    }
+                    else if (string.Equals(category, ReminderPresets.Meeting, System.StringComparison.OrdinalIgnoreCase) ||
+                             title.Contains("会议") || message.Contains("会议"))
+                    {
+                        imageUri = "ms-appx:///Assets/meeting.svg";
+                        iconBgColor = "#FFA726"; // 橙色
+                    }
+                    else if (string.Equals(category, ReminderPresets.OffWork, System.StringComparison.OrdinalIgnoreCase) ||
+                             title.Contains("下班") || message.Contains("下班"))
+                    {
+                        imageUri = "ms-appx:///Assets/offwork.svg";
+                        iconBgColor = "#AB47BC"; // 紫色
                     }
 
                     var visual = new NotificationVisual
                     {
-                        Title = reminder.Title,
-                        Message = string.IsNullOrWhiteSpace(reminder.Message)
+                        Title = title,
+                        Message = string.IsNullOrWhiteSpace(message)
                             ? $"提醒时间：{reminder.TimeText}"
-                            : reminder.Message,
+                            : message,
                         FooterText = System.DateTime.Now.ToString("HH:mm"),
                         ImageUri = imageUri,
+                        IconBackgroundColor = iconBgColor,
                         DisplayStyle = settings.DisplayStyle,
                         ColorTheme = settings.ColorTheme,
                         AutoCloseMilliseconds = settings.AutoCloseMilliseconds

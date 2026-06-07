@@ -142,6 +142,51 @@ namespace ToolBox.Views
             TitleText.ClearValue(TextBlock.ForegroundProperty);
             MessageText.ClearValue(TextBlock.ForegroundProperty);
             FooterText.ClearValue(TextBlock.ForegroundProperty);
+
+            // 动态设置图标背景色以符合类别标签颜色
+            var iconBgBrush = ParseHexColor(visual.IconBackgroundColor);
+            if (iconBgBrush != null)
+            {
+                ImageColumnBorder.Background = iconBgBrush;
+            }
+            else
+            {
+                ImageColumnBorder.ClearValue(Border.BackgroundProperty);
+            }
+        }
+
+        private static Microsoft.UI.Xaml.Media.SolidColorBrush? ParseHexColor(string? hex)
+        {
+            if (string.IsNullOrWhiteSpace(hex))
+            {
+                return null;
+            }
+
+            try
+            {
+                var cleaned = hex.Trim().TrimStart('#');
+                if (cleaned.Length == 6)
+                {
+                    byte r = Convert.ToByte(cleaned.Substring(0, 2), 16);
+                    byte g = Convert.ToByte(cleaned.Substring(2, 2), 16);
+                    byte b = Convert.ToByte(cleaned.Substring(4, 2), 16);
+                    return new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, r, g, b));
+                }
+                else if (cleaned.Length == 8)
+                {
+                    byte a = Convert.ToByte(cleaned.Substring(0, 2), 16);
+                    byte r = Convert.ToByte(cleaned.Substring(2, 2), 16);
+                    byte g = Convert.ToByte(cleaned.Substring(4, 2), 16);
+                    byte b = Convert.ToByte(cleaned.Substring(6, 2), 16);
+                    return new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(a, r, g, b));
+                }
+            }
+            catch
+            {
+                // Ignore parse errors
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -198,44 +243,17 @@ namespace ToolBox.Views
                 else if (visual.ImageUri.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
                 {
                     var uri = ResolveResourceUri(visual.ImageUri);
-                    var localPath = uri.LocalPath;
-                    Console.WriteLine($"[NOTIF] Loading SVG file from local path: {localPath}");
-                    if (System.IO.File.Exists(localPath))
-                    {
-                        var svgSource = new SvgImageSource();
-                        using (var fileStream = System.IO.File.OpenRead(localPath))
-                        {
-                            var randomAccessStream = fileStream.AsRandomAccessStream();
-                            await svgSource.SetSourceAsync(randomAccessStream);
-                        }
-                        PreviewImage.Source = svgSource;
-                    }
-                    else
-                    {
-                        Console.WriteLine($"[NOTIF] SVG file not found at: {localPath}");
-                        PreviewImage.Source = null;
-                    }
+                    Console.WriteLine($"[NOTIF] Loading SVG from URI: {uri}");
+                    var svgSource = new SvgImageSource(uri);
+                    PreviewImage.Source = svgSource;
                 }
                 // 情况 3：普通的图片格式（PNG, JPG, GIF）
                 else
                 {
                     var uri = ResolveResourceUri(visual.ImageUri);
-                    var localPath = uri.LocalPath;
-                    Console.WriteLine($"[NOTIF] Loading PNG/JPG file from local path: {localPath}");
-                    if (System.IO.File.Exists(localPath))
-                    {
-                        var bitmap = new BitmapImage();
-                        using (var fileStream = System.IO.File.OpenRead(localPath))
-                        {
-                            await bitmap.SetSourceAsync(fileStream.AsRandomAccessStream());
-                        }
-                        PreviewImage.Source = bitmap;
-                    }
-                    else
-                    {
-                        Console.WriteLine($"[NOTIF] PNG/JPG file not found at: {localPath}");
-                        PreviewImage.Source = null;
-                    }
+                    Console.WriteLine($"[NOTIF] Loading PNG/JPG from URI: {uri}");
+                    var bitmap = new BitmapImage(uri);
+                    PreviewImage.Source = bitmap;
                 }
             }
             catch (Exception ex)

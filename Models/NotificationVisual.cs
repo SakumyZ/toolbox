@@ -26,6 +26,11 @@ namespace ToolBox.Models
         public string ImageUri { get; init; } = "ms-appx:///Assets/Square150x150Logo.scale-200.png";
 
         /// <summary>
+        /// 左侧图标栏背景色（十六进制字符串，如 #42A5F5），若为空则使用系统主题色（Accent）。
+        /// </summary>
+        public string? IconBackgroundColor { get; init; }
+
+        /// <summary>
         /// 通知显示样式。
         /// </summary>
         public NotificationDisplayStyle DisplayStyle { get; init; } = NotificationDisplayStyle.Standard;
