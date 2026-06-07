@@ -1,3 +1,4 @@
+using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using ToolBox.Models;
@@ -48,53 +49,202 @@ namespace ToolBox.Views
 
             // 设置自动关闭毫秒数
             AutoCloseMillisecondsBox.Value = settings.AutoCloseMilliseconds;
+
+            UpdateStaticPreview();
+            UpdatePreviewTipText();
         }
 
-        /// <summary>
-        /// 显示样式改变时的处理。
-        /// </summary>
+        private void CategoryBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            UpdateStaticPreview();
+        }
+
         private void DisplayStyleBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            // 用户改变时实时更新，但不自动保存（需要点保存按钮）
+            UpdateStaticPreview();
         }
 
-        /// <summary>
-        /// 颜色主题改变时的处理。
-        /// </summary>
         private void ColorThemeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            // 用户改变时实时更新，但不自动保存（需要点保存按钮）
+            UpdateStaticPreview();
         }
 
-        /// <summary>
-        /// 自动关闭时长改变时的处理。
-        /// </summary>
         private void AutoCloseMillisecondsBox_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
         {
             // 用户改变时实时更新，但不自动保存（需要点保存按钮）
+            UpdatePreviewTipText();
         }
 
-        /// <summary>
-        /// 预览通知按钮点击处理。
-        /// </summary>
         private void Preview_Click(object sender, RoutedEventArgs e)
         {
             var settings = GetCurrentSettings();
+            var categoryIndex = CategoryBox.SelectedIndex;
+            if (categoryIndex < 0) categoryIndex = 0;
+            string categoryName = ReminderPresets.Categories[categoryIndex];
+            var (title, message) = ReminderPresets.ResolveTemplate(categoryName);
+            
+            string imageUri = "ms-appx:///Assets/default.svg";
+            string iconBgColor = "#90A4AE";
+
+            if (string.Equals(categoryName, ReminderPresets.Water, System.StringComparison.OrdinalIgnoreCase))
+            {
+                imageUri = "ms-appx:///Assets/water.svg";
+                iconBgColor = "#42A5F5";
+            }
+            else if (string.Equals(categoryName, ReminderPresets.StandUp, System.StringComparison.OrdinalIgnoreCase))
+            {
+                imageUri = "ms-appx:///Assets/standup.svg";
+                iconBgColor = "#66BB6A";
+            }
+            else if (string.Equals(categoryName, ReminderPresets.Meeting, System.StringComparison.OrdinalIgnoreCase))
+            {
+                imageUri = "ms-appx:///Assets/meeting.svg";
+                iconBgColor = "#FFA726";
+            }
+            else if (string.Equals(categoryName, ReminderPresets.OffWork, System.StringComparison.OrdinalIgnoreCase))
+            {
+                imageUri = "ms-appx:///Assets/offwork.svg";
+                iconBgColor = "#AB47BC";
+            }
 
             var visual = new NotificationVisual
             {
-                Title = "通知预览",
-                Message = $"样式: {settings.DisplayStyle}, 主题: {settings.ColorTheme}",
+                Title = title,
+                Message = message,
                 FooterText = System.DateTime.Now.ToString("HH:mm"),
-                ImageUri = "ms-appx:///Assets/default.svg",
-                IconBackgroundColor = "#90A4AE",
+                ImageUri = imageUri,
+                IconBackgroundColor = iconBgColor,
                 DisplayStyle = settings.DisplayStyle,
                 ColorTheme = settings.ColorTheme,
-                AutoCloseMilliseconds = 3000  // 预览通知 3 秒后关闭
+                AutoCloseMilliseconds = settings.AutoCloseMilliseconds
             };
 
             var windowManager = new NotificationWindowManager();
             windowManager.Show(visual);
+        }
+
+        private void UpdatePreviewTipText()
+        {
+            if (PreviewTipText == null || AutoCloseMillisecondsBox == null)
+            {
+                return;
+            }
+
+            int ms = GetSelectedAutoCloseMilliseconds();
+            double seconds = Math.Round(ms / 1000.0, 1);
+            string secondsStr = seconds.ToString("0.#");
+            PreviewTipText.Text = $"提示：预览通知会按当前设置显示一条样本通知，{secondsStr} 秒后自动关闭。";
+        }
+
+        private void UpdateStaticPreview()
+        {
+            if (!_isLoaded || DisplayStyleBox == null || ColorThemeBox == null || CategoryBox == null)
+            {
+                return;
+            }
+
+            var styleIndex = DisplayStyleBox.SelectedIndex; // 0: Standard, 1: Compact
+            var themeIndex = ColorThemeBox.SelectedIndex; // 0: System, 1: Light, 2: Dark
+            var categoryIndex = CategoryBox.SelectedIndex;
+            if (categoryIndex < 0) categoryIndex = 0;
+
+            // 1. 获取通知分类对应的模板
+            string categoryName = ReminderPresets.Categories[categoryIndex];
+            var (title, message) = ReminderPresets.ResolveTemplate(categoryName);
+            
+            // 2. 根据分类解析图标与背景色
+            string imageUri = "ms-appx:///Assets/default.svg";
+            string iconBgColor = "#90A4AE"; // 默认灰色
+
+            if (string.Equals(categoryName, ReminderPresets.Water, System.StringComparison.OrdinalIgnoreCase))
+            {
+                imageUri = "ms-appx:///Assets/water.svg";
+                iconBgColor = "#42A5F5";
+            }
+            else if (string.Equals(categoryName, ReminderPresets.StandUp, System.StringComparison.OrdinalIgnoreCase))
+            {
+                imageUri = "ms-appx:///Assets/standup.svg";
+                iconBgColor = "#66BB6A";
+            }
+            else if (string.Equals(categoryName, ReminderPresets.Meeting, System.StringComparison.OrdinalIgnoreCase))
+            {
+                imageUri = "ms-appx:///Assets/meeting.svg";
+                iconBgColor = "#FFA726";
+            }
+            else if (string.Equals(categoryName, ReminderPresets.OffWork, System.StringComparison.OrdinalIgnoreCase))
+            {
+                imageUri = "ms-appx:///Assets/offwork.svg";
+                iconBgColor = "#AB47BC";
+            }
+
+            // 更新静态文本
+            PreviewTitleText.Text = title;
+            PreviewMessageText.Text = message;
+            PreviewFooterText.Text = System.DateTime.Now.ToString("HH:mm");
+
+            // 3. 应用尺寸布局
+            if (styleIndex == 1) // Compact
+            {
+                StaticPreviewBorder.Height = 96;
+                PreviewMessageText.MaxLines = 1;
+                PreviewMessageText.Margin = new Thickness(0, 2, 0, 4);
+            }
+            else // Standard
+            {
+                StaticPreviewBorder.Height = 120;
+                PreviewMessageText.MaxLines = 2;
+                PreviewMessageText.Margin = new Thickness(0, 4, 0, 6);
+            }
+
+            // 4. 加载图片
+            try
+            {
+                var resolvedUri = NotificationWindow.ResolveResourceUri(imageUri);
+                PreviewImageControl.Source = new Microsoft.UI.Xaml.Media.Imaging.SvgImageSource(resolvedUri);
+            }
+            catch
+            {
+                PreviewImageControl.Source = null;
+            }
+
+            // 5. 应用主题颜色（包括背景色与前景字色）
+            var theme = themeIndex switch
+            {
+                1 => ElementTheme.Light,
+                2 => ElementTheme.Dark,
+                _ => ElementTheme.Default
+            };
+
+            StaticPreviewBorder.RequestedTheme = theme;
+
+            if (theme == ElementTheme.Light)
+            {
+                var whiteBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White);
+                StaticPreviewBorder.Background = whiteBrush;
+                PreviewImageOverlay.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            }
+            else if (theme == ElementTheme.Dark)
+            {
+                StaticPreviewBorder.ClearValue(Border.BackgroundProperty);
+                PreviewImageOverlay.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(0x22, 0x00, 0x00, 0x00));
+            }
+            else
+            {
+                StaticPreviewBorder.ClearValue(Border.BackgroundProperty);
+                PreviewImageOverlay.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(0x22, 0x00, 0x00, 0x00));
+            }
+
+            // 设置左侧图标背景色
+            var bgBrush = NotificationWindow.ParseHexColor(iconBgColor);
+            if (bgBrush != null)
+            {
+                PreviewImageColumnBorder.Background = bgBrush;
+            }
+
+            // 重新解析前景字色，避免缓存覆盖
+            PreviewTitleText.ClearValue(TextBlock.ForegroundProperty);
+            PreviewMessageText.ClearValue(TextBlock.ForegroundProperty);
+            PreviewFooterText.ClearValue(TextBlock.ForegroundProperty);
         }
 
         /// <summary>

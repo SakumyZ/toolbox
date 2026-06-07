@@ -11,62 +11,113 @@
         <TextBlock Text="设置" Style="{StaticResource TitleTextBlockStyle}" Margin="0,0,0,12" />
         <!-- 设置内容 -->
         <ScrollViewer Grid.Row="1">
-            <StackPanel Spacing="20">
-                <!-- 通知设置卡片 -->
-                <Grid Padding="16,14" CornerRadius="8"
-                      Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                      BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
-                      RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
-                    <TextBlock Text="通知样式设置" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,12" />
-                    <!-- 显示样式 -->
-                    <Grid Grid.Row="1" ColumnDefinitions="Auto,*" Margin="0,0,0,16">
-                        <TextBlock Text="显示样式" VerticalAlignment="Center" MinWidth="100" />
-                        <ComboBox x:Name="DisplayStyleBox" Grid.Column="1" SelectedIndex="0"
-                                  SelectionChanged="DisplayStyleBox_SelectionChanged">
-                            <ComboBoxItem Tag="0">标准</ComboBoxItem>
-                            <ComboBoxItem Tag="1">紧凑</ComboBoxItem>
-                        </ComboBox>
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="24" Margin="0,0,0,24">
+                <!-- 左侧：设置内容 -->
+                <StackPanel Spacing="20">
+                    <!-- 通知设置卡片 -->
+                    <Grid Padding="16,14" CornerRadius="8"
+                          Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                          BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                          RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+                        <TextBlock Text="通知样式设置" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,12" />
+                        <!-- 预览通知种类 -->
+                        <Grid Grid.Row="1" ColumnDefinitions="Auto,*" Margin="0,0,0,16">
+                            <TextBlock Text="预览通知种类" VerticalAlignment="Center" MinWidth="100" />
+                            <ComboBox x:Name="CategoryBox" Grid.Column="1" SelectedIndex="0" Width="150"
+                                      SelectionChanged="CategoryBox_SelectionChanged">
+                                <ComboBoxItem>喝水提醒</ComboBoxItem>
+                                <ComboBoxItem>起身活动</ComboBoxItem>
+                                <ComboBoxItem>会议提醒</ComboBoxItem>
+                                <ComboBoxItem>下班提醒</ComboBoxItem>
+                                <ComboBoxItem>自定义</ComboBoxItem>
+                            </ComboBox>
+                        </Grid>
+                        <!-- 显示样式 -->
+                        <Grid Grid.Row="2" ColumnDefinitions="Auto,*" Margin="0,0,0,16">
+                            <TextBlock Text="显示样式" VerticalAlignment="Center" MinWidth="100" />
+                            <ComboBox x:Name="DisplayStyleBox" Grid.Column="1" SelectedIndex="0" Width="150"
+                                      SelectionChanged="DisplayStyleBox_SelectionChanged">
+                                <ComboBoxItem Tag="0">标准</ComboBoxItem>
+                                <ComboBoxItem Tag="1">紧凑</ComboBoxItem>
+                            </ComboBox>
+                        </Grid>
+                        <!-- 颜色主题 -->
+                        <Grid Grid.Row="3" ColumnDefinitions="Auto,*" Margin="0,0,0,16">
+                            <TextBlock Text="颜色主题" VerticalAlignment="Center" MinWidth="100" />
+                            <ComboBox x:Name="ColorThemeBox" Grid.Column="1" SelectedIndex="0" Width="150"
+                                      SelectionChanged="ColorThemeBox_SelectionChanged">
+                                <ComboBoxItem Tag="0">系统</ComboBoxItem>
+                                <ComboBoxItem Tag="1">浅色</ComboBoxItem>
+                                <ComboBoxItem Tag="2">深色</ComboBoxItem>
+                            </ComboBox>
+                        </Grid>
+                        <!-- 自动关闭时长 -->
+                        <Grid Grid.Row="4" ColumnDefinitions="Auto,*" Margin="0,0,0,16">
+                            <TextBlock Text="自动关闭时长（毫秒）" VerticalAlignment="Center" MinWidth="100" />
+                            <NumberBox x:Name="AutoCloseMillisecondsBox" Grid.Column="1" Value="6000" Width="150" HorizontalAlignment="Left"
+                                       Minimum="100" Maximum="600000"
+                                       SpinButtonPlacementMode="Compact"
+                                       LargeChange="1000" SmallChange="100"
+                                       ValueChanged="AutoCloseMillisecondsBox_ValueChanged" />
+                        </Grid>
+                        <!-- 操作按钮 -->
+                        <Grid Grid.Row="5" ColumnDefinitions="Auto,Auto" ColumnSpacing="8">
+                            <Button Click="Preview_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE890;" FontSize="12" />
+                                    <TextBlock Text="弹出预览通知" />
+                                </StackPanel>
+                            </Button>
+                            <Button Grid.Column="1" Click="SaveSettings_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE74E;" FontSize="12" />
+                                    <TextBlock Text="保存" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+                        <TextBlock x:Name="PreviewTipText" Grid.Row="6" Margin="0,12,0,0"
+                                   Text="提示：预览通知会按当前设置显示一条样本通知，6 秒后自动关闭。"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap" />
                     </Grid>
-                    <!-- 颜色主题 -->
-                    <Grid Grid.Row="2" ColumnDefinitions="Auto,*" Margin="0,0,0,16">
-                        <TextBlock Text="颜色主题" VerticalAlignment="Center" MinWidth="100" />
-                        <ComboBox x:Name="ColorThemeBox" Grid.Column="1" SelectedIndex="0"
-                                  SelectionChanged="ColorThemeBox_SelectionChanged">
-                            <ComboBoxItem Tag="0">系统</ComboBoxItem>
-                            <ComboBoxItem Tag="1">浅色</ComboBoxItem>
-                            <ComboBoxItem Tag="2">深色</ComboBoxItem>
-                        </ComboBox>
-                    </Grid>
-                    <!-- 自动关闭时长 -->
-                    <Grid Grid.Row="3" ColumnDefinitions="Auto,*" Margin="0,0,0,16">
-                        <TextBlock Text="自动关闭时长（毫秒）" VerticalAlignment="Center" MinWidth="100" />
-                        <NumberBox x:Name="AutoCloseMillisecondsBox" Grid.Column="1" Value="6000"
-                                   Minimum="100" Maximum="600000"
-                                   SpinButtonPlacementMode="Compact"
-                                   LargeChange="1000" SmallChange="100"
-                                   ValueChanged="AutoCloseMillisecondsBox_ValueChanged" />
-                    </Grid>
-                    <!-- 操作按钮 -->
-                    <Grid Grid.Row="4" ColumnDefinitions="Auto,Auto" ColumnSpacing="8">
-                        <Button Click="Preview_Click">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon Glyph="&#xE890;" FontSize="12" />
-                                <TextBlock Text="预览通知" />
-                            </StackPanel>
-                        </Button>
-                        <Button Grid.Column="1" Click="SaveSettings_Click">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon Glyph="&#xE74E;" FontSize="12" />
-                                <TextBlock Text="保存" />
-                            </StackPanel>
-                        </Button>
-                    </Grid>
-                    <TextBlock Grid.Row="5" Margin="0,12,0,0"
-                               Text="提示：预览通知会按当前设置显示一条样本通知，3 秒后自动关闭。"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               TextWrapping="Wrap" />
-                </Grid>
-            </StackPanel>
+                </StackPanel>
+
+                <!-- 右侧：静态预览 -->
+                <StackPanel Grid.Column="1" Width="420" Spacing="12" VerticalAlignment="Top" Margin="0,0,12,0">
+                    <TextBlock Text="静态样式预览" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <Border x:Name="StaticPreviewBorder"
+                            Width="420" Height="120"
+                            CornerRadius="8"
+                            BorderThickness="1"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="96" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <!-- 左侧图片栏 -->
+                            <Border x:Name="PreviewImageColumnBorder" Grid.Column="0" CornerRadius="8,0,0,8" Background="#42A5F5">
+                                <Grid>
+                                    <Border x:Name="PreviewImageOverlay" Background="#22000000" />
+                                    <Image x:Name="PreviewImageControl" Margin="12" Stretch="Uniform" />
+                                </Grid>
+                            </Border>
+                            <!-- 右侧详情栏 -->
+                            <Grid Grid.Column="1" Padding="14,12,12,10" RowDefinitions="Auto,*,Auto">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock x:Name="PreviewTitleText" Text="标题" FontSize="15" FontWeight="SemiBold" MaxLines="1" TextTrimming="CharacterEllipsis" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                                    <Button Grid.Column="1" Width="24" Height="24" Padding="0" Background="Transparent" BorderThickness="0" IsEnabled="False">
+                                        <FontIcon Glyph="&#xE711;" FontSize="10" />
+                                    </Button>
+                                </Grid>
+                                <TextBlock x:Name="PreviewMessageText" Grid.Row="1" Margin="0,4,0,6" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" MaxLines="2" TextWrapping="WrapWholeWords" Text="正文" />
+                                <TextBlock x:Name="PreviewFooterText" Grid.Row="2" FontSize="11" Foreground="{ThemeResource TextFillColorTertiaryBrush}" Text="12:00" />
+                            </Grid>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+            </Grid>
         </ScrollViewer>
     </Grid>
 </Page>

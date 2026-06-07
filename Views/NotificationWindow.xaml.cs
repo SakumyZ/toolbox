@@ -155,7 +155,7 @@ namespace ToolBox.Views
             }
         }
 
-        private static Microsoft.UI.Xaml.Media.SolidColorBrush? ParseHexColor(string? hex)
+        internal static Microsoft.UI.Xaml.Media.SolidColorBrush? ParseHexColor(string? hex)
         {
             if (string.IsNullOrWhiteSpace(hex))
             {
@@ -192,7 +192,7 @@ namespace ToolBox.Views
         /// <summary>
         /// 将 ms-appx:/// 资源路径转换为本地文件路径的 Uri，以兼容非打包（Unpackaged）模式下的资源加载。
         /// </summary>
-        private static Uri ResolveResourceUri(string uriString)
+        internal static Uri ResolveResourceUri(string uriString)
         {
             if (uriString.StartsWith("ms-appx:///", StringComparison.OrdinalIgnoreCase))
             {
