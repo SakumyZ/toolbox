@@ -21,6 +21,7 @@ namespace ToolBox.Services
         private readonly SemaphoreSlim _checkLock = new(1, 1);
         private CancellationTokenSource? _cancellationTokenSource;
         private Task? _backgroundTask;
+        private readonly System.Collections.Generic.HashSet<long> _initializedIntervalReminders = new();
 
         public static ReminderSchedulerService Instance => _instance.Value;
 
@@ -94,9 +95,29 @@ namespace ToolBox.Services
                     .Where(r => r.IsEnabled)
                     .ToList();
 
+                // 维护已初始化的间隔定时器集合，确保禁用的或不存在的定时器被清理
+                var enabledIds = reminders.Select(r => r.Id).ToHashSet();
+                _initializedIntervalReminders.IntersectWith(enabledIds);
+
                 foreach (var reminder in reminders)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+
+                    if (reminder.RecurrenceType == ReminderRecurrenceTypes.Interval)
+                    {
+                        if (!_initializedIntervalReminders.Contains(reminder.Id))
+                        {
+                            var intervalMinutes = reminder.IntervalMinutes <= 0 ? 60 : reminder.IntervalMinutes;
+                            if (!reminder.LastTriggeredAt.HasValue || reminder.LastTriggeredAt.Value.AddMinutes(intervalMinutes) <= now)
+                            {
+                                Log.Information("ReminderSchedulerService: 首次加载/启用定时器 '{Title}' (ID = {Id}) 且已过期或未触发，将其计时起点重置为当前时间 {Now}", reminder.Title, reminder.Id, now);
+                                _reminderService.RecordTrigger(reminder.Id, now, "Timer Started", true);
+                                reminder.LastTriggeredAt = now;
+                                OnRemindersChanged();
+                            }
+                            _initializedIntervalReminders.Add(reminder.Id);
+                        }
+                    }
 
                     if (!ShouldTrigger(reminder, now))
                     {
@@ -336,7 +357,7 @@ namespace ToolBox.Services
             var intervalMinutes = reminder.IntervalMinutes <= 0 ? 60 : reminder.IntervalMinutes;
             if (!reminder.LastTriggeredAt.HasValue)
             {
-                return true;
+                return false;
             }
 
             return reminder.LastTriggeredAt.Value.AddMinutes(intervalMinutes) <= now;

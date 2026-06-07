@@ -215,7 +215,13 @@ namespace ToolBox.Models
                 return current.AddMinutes(minutes);
             }
 
-            return LastTriggeredAt.Value.AddMinutes(minutes);
+            var nextTrigger = LastTriggeredAt.Value.AddMinutes(minutes);
+            if (nextTrigger <= current)
+            {
+                return current.AddMinutes(minutes);
+            }
+
+            return nextTrigger;
         }
 
         /// <summary>
