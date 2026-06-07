@@ -31,22 +31,39 @@
                             Stretch="Uniform" />
                     </Grid>
                 </Border>
-                <Grid Grid.Column="1" Padding="12,10,10,8" RowDefinitions="Auto,*,Auto">
+                <Grid Grid.Column="1" Padding="14,12,12,10" RowDefinitions="Auto,*,Auto">
                     <Grid ColumnDefinitions="*,Auto">
                         <TextBlock
                             x:Name="TitleText"
                             FontSize="15"
                             FontWeight="SemiBold"
                             MaxLines="1"
-                            TextTrimming="CharacterEllipsis" />
+                            TextTrimming="CharacterEllipsis"
+                            Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                         <Button
                             Grid.Column="1"
                             Width="24"
                             Height="24"
                             Padding="0"
                             Background="Transparent"
+                            BorderBrush="Transparent"
                             BorderThickness="0"
+                            IsTabStop="False"
+                            AllowFocusOnInteraction="False"
+                            UseSystemFocusVisuals="False"
+                            FocusVisualPrimaryThickness="0"
+                            FocusVisualSecondaryThickness="0"
                             Click="CloseButton_Click">
+                            <Button.Resources>
+                                <Thickness x:Key="ButtonBorderThemeThickness">0</Thickness>
+                                <Thickness x:Key="ButtonBorderThemeThicknessFocused">0</Thickness>
+                                <SolidColorBrush x:Key="ButtonBorderBrush" Color="Transparent" />
+                                <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
+                                <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
+                                <SolidColorBrush x:Key="ButtonBorderBrushDisabled" Color="Transparent" />
+                                <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#1A888888" />
+                                <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#33888888" />
+                            </Button.Resources>
                             <FontIcon Glyph="&#xE711;" FontSize="10" />
                         </Button>
                     </Grid>

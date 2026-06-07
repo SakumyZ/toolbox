@@ -117,6 +117,7 @@ namespace ToolBox
                 }
                 catch (Exception ex)
                 {
+                    Console.WriteLine($"[Navigation SelectionChanged Error] {ex}");
                     try
                     {
                         var appData = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ToolBox");
@@ -139,9 +140,10 @@ namespace ToolBox
 
         private void ContentFrame_NavigationFailed(object sender, Microsoft.UI.Xaml.Navigation.NavigationFailedEventArgs e)
         {
+            Console.WriteLine($"[Navigation Failed Error] {e.Exception}");
             try
             {
-                var appData = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ToolBox");
+                var appData = System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData), "ToolBox");
                 System.IO.Directory.CreateDirectory(appData);
                 var logPath = System.IO.Path.Combine(appData, "nav_error.txt");
                 System.IO.File.AppendAllText(logPath, DateTime.Now.ToString("o") + "\nNavigationFailed: " + e.Exception?.ToString() + "\n\n");

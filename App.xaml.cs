@@ -157,6 +157,7 @@ namespace ToolBox
 
         private static void TryWriteStartupLog(string content)
         {
+            Console.WriteLine($"[Fatal Error] {content}");
             try
             {
                 var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ToolBox");

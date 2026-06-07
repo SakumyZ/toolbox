@@ -1,7 +1,9 @@
 using System;
+using System.IO;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Imaging;
 using ToolBox.Models;
@@ -23,12 +25,12 @@ namespace ToolBox.Views
         /// <summary>
         /// 通知窗高度。
         /// </summary>
-        public const int WindowHeight = 104;
+        public const int WindowHeight = 120;
 
         /// <summary>
         /// 紧凑通知窗高度。
         /// </summary>
-        public const int CompactWindowHeight = 84;
+        public const int CompactWindowHeight = 96;
 
         /// <summary>
         /// 当前通知窗实际高度。
@@ -68,7 +70,7 @@ namespace ToolBox.Views
 
         private void ConfigureWindow()
         {
-            AppWindow.Resize(new SizeInt32(WindowWidth, WindowHeight));
+            AppWindow.ResizeClient(new SizeInt32(WindowWidth, WindowHeight));
 
             if (AppWindow.Presenter is OverlappedPresenter presenter)
             {
@@ -107,41 +109,54 @@ namespace ToolBox.Views
                 MessageText.Margin = new Thickness(0, 4, 0, 6);
             }
 
-            AppWindow.Resize(new SizeInt32(WindowWidth, CurrentWindowHeight));
+            AppWindow.ResizeClient(new SizeInt32(WindowWidth, CurrentWindowHeight));
 
-            // 修复浅色主题下主体灰色、边框或覆盖层问题：对 Light 主题使用白色背景并移除图像遮罩。
-            try
+            // 依据设置调整背景和遮罩，同时设置根 Grid 背景以防止白边或背景泄露
+            if (visual.ColorTheme == NotificationColorTheme.Light)
             {
-                if (visual.ColorTheme == NotificationColorTheme.Light)
-                {
-                    RootBorder.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White);
-                    RootBorder.BorderBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+                var whiteBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White);
+                NotificationRoot.Background = whiteBrush;
+                RootBorder.Background = whiteBrush;
+                RootBorder.BorderBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
 
-                    // 图片栏不要深色遮罩，使头像在浅色主题下清晰
-                    ImageOverlay.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
-
-                    // 文字颜色使用深色，保证可读性
-                    TitleText.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
-                    MessageText.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
-                    FooterText.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorTertiaryBrush"];
-                }
-                else if (visual.ColorTheme == NotificationColorTheme.Dark)
-                {
-                    // 恢复为资源主题色以支持深色模式
-                    RootBorder.Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
-                    ImageOverlay.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(0x22, 0x00, 0x00, 0x00));
-                    TitleText.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
-                    MessageText.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
-                    FooterText.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorTertiaryBrush"];
-                }
-                else
-                {
-                    // System：使用资源默认行为
-                    RootBorder.Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
-                    ImageOverlay.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(0x22, 0x00, 0x00, 0x00));
-                }
+                // 图片栏不要深色遮罩，使头像在浅色主题下清晰
+                ImageOverlay.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
             }
-            catch { }
+            else if (visual.ColorTheme == NotificationColorTheme.Dark)
+            {
+                NotificationRoot.ClearValue(Grid.BackgroundProperty);
+                RootBorder.ClearValue(Border.BackgroundProperty);
+                RootBorder.ClearValue(Border.BorderBrushProperty);
+                ImageOverlay.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(0x22, 0x00, 0x00, 0x00));
+            }
+            else
+            {
+                // System 主题：全部使用 XAML 的 ThemeResource 默认样式
+                NotificationRoot.ClearValue(Grid.BackgroundProperty);
+                RootBorder.ClearValue(Border.BackgroundProperty);
+                RootBorder.ClearValue(Border.BorderBrushProperty);
+                ImageOverlay.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(0x22, 0x00, 0x00, 0x00));
+            }
+
+            // 清理任何可能的 C# 覆盖值，让 XAML ThemeResource 自动根据 RequestedTheme 进行解析
+            TitleText.ClearValue(TextBlock.ForegroundProperty);
+            MessageText.ClearValue(TextBlock.ForegroundProperty);
+            FooterText.ClearValue(TextBlock.ForegroundProperty);
+        }
+
+        /// <summary>
+        /// 将 ms-appx:/// 资源路径转换为本地文件路径的 Uri，以兼容非打包（Unpackaged）模式下的资源加载。
+        /// </summary>
+        private static Uri ResolveResourceUri(string uriString)
+        {
+            if (uriString.StartsWith("ms-appx:///", StringComparison.OrdinalIgnoreCase))
+            {
+                var relativePath = uriString.Substring("ms-appx:///".Length)
+                                            .Replace('/', System.IO.Path.DirectorySeparatorChar);
+                var localPath = System.IO.Path.Combine(System.AppContext.BaseDirectory, relativePath);
+                return new Uri(localPath);
+            }
+            return new Uri(uriString);
         }
 
         /// <summary>
@@ -152,6 +167,8 @@ namespace ToolBox.Views
             TitleText.Text = string.IsNullOrWhiteSpace(visual.Title) ? "提醒" : visual.Title;
             MessageText.Text = string.IsNullOrWhiteSpace(visual.Message) ? "到时间了。" : visual.Message;
             FooterText.Text = visual.FooterText;
+
+            Console.WriteLine($"[NotificationWindow] Applying visual: Title='{TitleText.Text}', Message='{MessageText.Text}', Footer='{FooterText.Text}'");
 
             if (string.IsNullOrWhiteSpace(visual.ImageUri))
             {
@@ -180,14 +197,45 @@ namespace ToolBox.Views
                 // 情况 2：如果是以 .svg 结尾的文件路径或应用资源定位符 (ms-appx:///)
                 else if (visual.ImageUri.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
                 {
-                    var uri = new Uri(visual.ImageUri);
-                    Console.WriteLine($"[NOTIF] Creating SvgImageSource with URI: {uri}");
-                    PreviewImage.Source = new SvgImageSource(uri);
+                    var uri = ResolveResourceUri(visual.ImageUri);
+                    var localPath = uri.LocalPath;
+                    Console.WriteLine($"[NOTIF] Loading SVG file from local path: {localPath}");
+                    if (System.IO.File.Exists(localPath))
+                    {
+                        var svgSource = new SvgImageSource();
+                        using (var fileStream = System.IO.File.OpenRead(localPath))
+                        {
+                            var randomAccessStream = fileStream.AsRandomAccessStream();
+                            await svgSource.SetSourceAsync(randomAccessStream);
+                        }
+                        PreviewImage.Source = svgSource;
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[NOTIF] SVG file not found at: {localPath}");
+                        PreviewImage.Source = null;
+                    }
                 }
                 // 情况 3：普通的图片格式（PNG, JPG, GIF）
                 else
                 {
-                    PreviewImage.Source = new BitmapImage(new Uri(visual.ImageUri));
+                    var uri = ResolveResourceUri(visual.ImageUri);
+                    var localPath = uri.LocalPath;
+                    Console.WriteLine($"[NOTIF] Loading PNG/JPG file from local path: {localPath}");
+                    if (System.IO.File.Exists(localPath))
+                    {
+                        var bitmap = new BitmapImage();
+                        using (var fileStream = System.IO.File.OpenRead(localPath))
+                        {
+                            await bitmap.SetSourceAsync(fileStream.AsRandomAccessStream());
+                        }
+                        PreviewImage.Source = bitmap;
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[NOTIF] PNG/JPG file not found at: {localPath}");
+                        PreviewImage.Source = null;
+                    }
                 }
             }
             catch (Exception ex)

@@ -173,7 +173,7 @@ namespace ToolBox.Services
                                     Message = result.Success ? $"按计划在后台运行完毕。\n{result.Message}" : $"发生错误：\n{result.Message}",
                                     TimeText = reminder.TimeText
                                 };
-                                _notificationService.ShowReminderNotification(notifyReminder, out _);
+                                ShowCustomNotification(notifyReminder);
                             });
                             
                             // 对于定时脚本，我们默认触发就是成功的（至于脚本执行是否成功在后台记录）
@@ -187,7 +187,8 @@ namespace ToolBox.Services
                     }
                     else
                     {
-                        success = _notificationService.ShowReminderNotification(reminder, out errorMessage);
+                        ShowCustomNotification(reminder);
+                        success = true;
                     }
 
                     if (reminder.ActionType != ReminderActionTypes.Script)
@@ -334,6 +335,58 @@ namespace ToolBox.Services
         private void OnRemindersChanged()
         {
             RemindersChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        private void ShowCustomNotification(Reminder reminder)
+        {
+            var dispatcher = App.MainWindowInstance?.DispatcherQueue;
+            if (dispatcher == null)
+            {
+                // 如果没有主窗口（例如后台静默运行且窗口未初始化），则使用系统通知作为兜底
+                var ns = new NotificationService();
+                ns.ShowReminderNotification(reminder, out _);
+                return;
+            }
+
+            dispatcher.TryEnqueue(() =>
+            {
+                try
+                {
+                    var settingsService = new NotificationSettingsService();
+                    var settings = settingsService.GetSettings();
+
+                    var imageUri = "ms-appx:///Assets/Square150x150Logo.scale-200.png";
+                    if (string.Equals(reminder.Category, "喝水", System.StringComparison.OrdinalIgnoreCase) ||
+                        (!string.IsNullOrEmpty(reminder.Title) && reminder.Title.Contains("喝水")) ||
+                        (!string.IsNullOrEmpty(reminder.Message) && reminder.Message.Contains("喝水")))
+                    {
+                        imageUri = "ms-appx:///Assets/water.svg";
+                    }
+
+                    var visual = new NotificationVisual
+                    {
+                        Title = reminder.Title,
+                        Message = string.IsNullOrWhiteSpace(reminder.Message)
+                            ? $"提醒时间：{reminder.TimeText}"
+                            : reminder.Message,
+                        FooterText = System.DateTime.Now.ToString("HH:mm"),
+                        ImageUri = imageUri,
+                        DisplayStyle = settings.DisplayStyle,
+                        ColorTheme = settings.ColorTheme,
+                        AutoCloseMilliseconds = settings.AutoCloseMilliseconds
+                    };
+
+                    var windowManager = new NotificationWindowManager();
+                    windowManager.Show(visual);
+                }
+                catch (System.Exception ex)
+                {
+                    System.Console.WriteLine($"[ReminderSchedulerService] Failed to show custom notification: {ex}");
+                    // 发生异常时，使用系统通知作为兜底
+                    var ns = new NotificationService();
+                    ns.ShowReminderNotification(reminder, out _);
+                }
+            });
         }
     }
 }

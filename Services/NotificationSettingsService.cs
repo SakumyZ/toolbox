@@ -35,6 +35,7 @@ namespace ToolBox.Services
         /// </summary>
         public NotificationSettings GetSettings()
         {
+            Console.WriteLine("[NotificationSettingsService] Loading settings...");
             using var connection = new SqliteConnection(_connectionString);
             connection.Open();
 
@@ -42,12 +43,14 @@ namespace ToolBox.Services
             var colorThemeStr = GetSettingValue(connection, ColorThemeKey, NotificationColorTheme.System.ToString());
             var autoCloseMsStr = GetSettingValue(connection, AutoCloseMillisecondsKey, NotificationAutoCloseDurations.Default.ToString());
 
-            return new NotificationSettings
+            var settings = new NotificationSettings
             {
                 DisplayStyle = ParseEnum(displayStyleStr, NotificationDisplayStyle.Standard),
                 ColorTheme = ParseEnum(colorThemeStr, NotificationColorTheme.System),
                 AutoCloseMilliseconds = NormalizeAutoCloseMilliseconds(int.TryParse(autoCloseMsStr, out var ms) ? ms : NotificationAutoCloseDurations.Default)
             };
+            Console.WriteLine($"[NotificationSettingsService] Loaded settings: DisplayStyle={settings.DisplayStyle}, ColorTheme={settings.ColorTheme}, AutoClose={settings.AutoCloseMilliseconds}ms");
+            return settings;
         }
 
         /// <summary>
@@ -60,6 +63,7 @@ namespace ToolBox.Services
                 throw new ArgumentNullException(nameof(settings));
             }
 
+            Console.WriteLine($"[NotificationSettingsService] Saving settings: DisplayStyle={settings.DisplayStyle}, ColorTheme={settings.ColorTheme}, AutoClose={settings.AutoCloseMilliseconds}ms");
             var normalizedMs = NormalizeAutoCloseMilliseconds(settings.AutoCloseMilliseconds);
 
             using var connection = new SqliteConnection(_connectionString);
@@ -96,49 +100,12 @@ namespace ToolBox.Services
             using var command = connection.CreateCommand();
             command.CommandText = @"
                 CREATE TABLE IF NOT EXISTS AppSettings (
-                    Key TEXT PRIMARY KEY,
-                    Value TEXT NOT NULL
+                    SettingKey TEXT PRIMARY KEY,
+                    SettingValue TEXT NOT NULL,
+                    UpdatedAt TEXT NOT NULL
                 );
             ";
             command.ExecuteNonQuery();
-
-            // 如果已有旧的 AppSettings 表但缺少 Value 列，尝试添加该列以兼容旧模式。
-            try
-            {
-                using var infoCmd = connection.CreateCommand();
-                infoCmd.CommandText = "PRAGMA table_info('AppSettings');";
-                using var reader = infoCmd.ExecuteReader();
-                bool hasValueColumn = false;
-                while (reader.Read())
-                {
-                    // PRAGMA table_info returns: cid, name, type, notnull, dflt_value, pk
-                    var name = reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
-                    if (string.Equals(name, "Value", StringComparison.OrdinalIgnoreCase))
-                    {
-                        hasValueColumn = true;
-                        break;
-                    }
-                }
-
-                if (!hasValueColumn)
-                {
-                    using var alterCmd = connection.CreateCommand();
-                    // 添加带默认值的列以避免 NOT NULL 约束问题
-                    alterCmd.CommandText = "ALTER TABLE AppSettings ADD COLUMN Value TEXT DEFAULT ''";
-                    alterCmd.ExecuteNonQuery();
-                }
-            }
-            catch (SqliteException ex)
-            {
-                try
-                {
-                    var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ToolBox");
-                    Directory.CreateDirectory(appData);
-                    var logPath = Path.Combine(appData, "nav_error.txt");
-                    File.AppendAllText(logPath, DateTime.Now.ToString("o") + "\nInitializeTables migration error: " + ex.ToString() + "\n\n");
-                }
-                catch { }
-            }
         }
 
         private void EnsureDefaultSettings()
@@ -168,7 +135,7 @@ namespace ToolBox.Services
             try
             {
                 using var command = connection.CreateCommand();
-                command.CommandText = "SELECT Value FROM AppSettings WHERE Key = @key";
+                command.CommandText = "SELECT SettingValue FROM AppSettings WHERE SettingKey = @key";
                 command.Parameters.AddWithValue("@key", key);
 
                 var result = command.ExecuteScalar();
@@ -176,6 +143,7 @@ namespace ToolBox.Services
             }
             catch (SqliteException ex)
             {
+                Console.WriteLine($"[NotificationSettingsService] GetSettingValue SQLite error for key '{key}': {ex}");
                 try
                 {
                     var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ToolBox");
@@ -193,11 +161,12 @@ namespace ToolBox.Services
         {
             using var command = connection.CreateCommand();
             command.CommandText = @"
-                INSERT INTO AppSettings (Key, Value) VALUES (@key, @value)
-                ON CONFLICT(Key) DO UPDATE SET Value = @value
+                INSERT INTO AppSettings (SettingKey, SettingValue, UpdatedAt) VALUES (@key, @value, @updatedAt)
+                ON CONFLICT(SettingKey) DO UPDATE SET SettingValue = @value, UpdatedAt = @updatedAt
             ";
             command.Parameters.AddWithValue("@key", key);
             command.Parameters.AddWithValue("@value", value);
+            command.Parameters.AddWithValue("@updatedAt", DateTime.Now.ToString("o"));
 
             command.ExecuteNonQuery();
         }
