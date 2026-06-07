@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using Serilog;
 
 namespace ToolBox.Services
 {
@@ -60,9 +61,11 @@ namespace ToolBox.Services
 
             var result1 = RegisterHotKey(hWnd, HOTKEY_QUICK_SEARCH,
                 MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_S);
+            Log.Information("HotkeyService: 注册快速搜索热键 (Ctrl+Alt+S) -> {Status}", result1 ? "成功" : "失败");
 
             var result2 = RegisterHotKey(hWnd, HOTKEY_QUICK_ADD,
                 MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_N);
+            Log.Information("HotkeyService: 注册快速新增热键 (Ctrl+Alt+N) -> {Status}", result2 ? "成功" : "失败");
 
             _registered = result1 || result2;
             return _registered;
@@ -73,6 +76,7 @@ namespace ToolBox.Services
         /// </summary>
         public void HandleHotkeyMessage(int hotkeyId)
         {
+            Log.Debug("HotkeyService: 收到热键消息 ID = {HotkeyId}", hotkeyId);
             switch (hotkeyId)
             {
                 case HOTKEY_QUICK_SEARCH:
@@ -94,6 +98,7 @@ namespace ToolBox.Services
                 UnregisterHotKey(_hWnd, HOTKEY_QUICK_SEARCH);
                 UnregisterHotKey(_hWnd, HOTKEY_QUICK_ADD);
                 _registered = false;
+                Log.Information("HotkeyService: 已注销所有全局热键");
             }
         }
 

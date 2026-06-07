@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using Microsoft.Data.Sqlite;
 using ToolBox.Models;
+using Serilog;
 
 namespace ToolBox.Services
 {
@@ -27,49 +28,59 @@ namespace ToolBox.Services
 
         private void InitializeTables()
         {
-            using var connection = new SqliteConnection(_connectionString);
-            connection.Open();
+            try
+            {
+                using var connection = new SqliteConnection(_connectionString);
+                connection.Open();
 
-            var command = connection.CreateCommand();
-            command.CommandText = @"
-                CREATE TABLE IF NOT EXISTS Reminders (
-                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    Category TEXT NOT NULL DEFAULT '自定义',
-                    Title TEXT NOT NULL,
-                    Message TEXT NOT NULL DEFAULT '',
-                    TimeText TEXT NOT NULL,
-                    RecurrenceType TEXT NOT NULL DEFAULT '单次',
-                    IntervalMinutes INTEGER NOT NULL DEFAULT 0,
-                    DayOfMonth INTEGER NOT NULL DEFAULT 1,
-                    IsEnabled INTEGER NOT NULL DEFAULT 1,
-                    LastTriggeredAt TEXT NULL,
-                    CreatedAt TEXT NOT NULL,
-                    UpdatedAt TEXT NOT NULL
-                );
+                var command = connection.CreateCommand();
+                command.CommandText = @"
+                    CREATE TABLE IF NOT EXISTS Reminders (
+                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        Category TEXT NOT NULL DEFAULT '自定义',
+                        Title TEXT NOT NULL,
+                        Message TEXT NOT NULL DEFAULT '',
+                        TimeText TEXT NOT NULL,
+                        RecurrenceType TEXT NOT NULL DEFAULT '单次',
+                        IntervalMinutes INTEGER NOT NULL DEFAULT 0,
+                        DayOfMonth INTEGER NOT NULL DEFAULT 1,
+                        IsEnabled INTEGER NOT NULL DEFAULT 1,
+                        LastTriggeredAt TEXT NULL,
+                        CreatedAt TEXT NOT NULL,
+                        UpdatedAt TEXT NOT NULL
+                    );
 
-                CREATE TABLE IF NOT EXISTS ReminderTriggerLogs (
-                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ReminderId INTEGER NOT NULL,
-                    TriggeredAt TEXT NOT NULL,
-                    Status TEXT NOT NULL DEFAULT 'Success',
-                    ScriptExecutionLogId INTEGER NULL,
-                    FOREIGN KEY (ReminderId) REFERENCES Reminders(Id) ON DELETE CASCADE
-                );
+                    CREATE TABLE IF NOT EXISTS ReminderTriggerLogs (
+                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        ReminderId INTEGER NOT NULL,
+                        TriggeredAt TEXT NOT NULL,
+                        Status TEXT NOT NULL DEFAULT 'Success',
+                        ScriptExecutionLogId INTEGER NULL,
+                        FOREIGN KEY (ReminderId) REFERENCES Reminders(Id) ON DELETE CASCADE
+                    );
 
-                CREATE INDEX IF NOT EXISTS IX_Reminders_IsEnabled ON Reminders(IsEnabled);
-                CREATE INDEX IF NOT EXISTS IX_ReminderTriggerLogs_ReminderId ON ReminderTriggerLogs(ReminderId);
-                CREATE INDEX IF NOT EXISTS IX_ReminderTriggerLogs_TriggeredAt ON ReminderTriggerLogs(TriggeredAt DESC);
-            ";
-            command.ExecuteNonQuery();
+                    CREATE INDEX IF NOT EXISTS IX_Reminders_IsEnabled ON Reminders(IsEnabled);
+                    CREATE INDEX IF NOT EXISTS IX_ReminderTriggerLogs_ReminderId ON ReminderTriggerLogs(ReminderId);
+                    CREATE INDEX IF NOT EXISTS IX_ReminderTriggerLogs_TriggeredAt ON ReminderTriggerLogs(TriggeredAt DESC);
+                ";
+                command.ExecuteNonQuery();
 
-            EnsureColumnExists(connection, "Reminders", "RecurrenceType", "TEXT NOT NULL DEFAULT '单次'");
-            EnsureColumnExists(connection, "Reminders", "IntervalMinutes", "INTEGER NOT NULL DEFAULT 0");
-            EnsureColumnExists(connection, "Reminders", "DayOfMonth", "INTEGER NOT NULL DEFAULT 1");
-            EnsureColumnExists(connection, "Reminders", "ActionType", "TEXT NOT NULL DEFAULT '通知提醒'");
-            EnsureColumnExists(connection, "Reminders", "ScriptId", "INTEGER NULL");
-            EnsureColumnExists(connection, "Reminders", "ScriptParameters", "TEXT NOT NULL DEFAULT ''");
-            EnsureColumnExists(connection, "Reminders", "DateText", "TEXT NOT NULL DEFAULT ''");
-            EnsureColumnExists(connection, "ReminderTriggerLogs", "ScriptExecutionLogId", "INTEGER NULL");
+                EnsureColumnExists(connection, "Reminders", "RecurrenceType", "TEXT NOT NULL DEFAULT '单次'");
+                EnsureColumnExists(connection, "Reminders", "IntervalMinutes", "INTEGER NOT NULL DEFAULT 0");
+                EnsureColumnExists(connection, "Reminders", "DayOfMonth", "INTEGER NOT NULL DEFAULT 1");
+                EnsureColumnExists(connection, "Reminders", "ActionType", "TEXT NOT NULL DEFAULT '通知提醒'");
+                EnsureColumnExists(connection, "Reminders", "ScriptId", "INTEGER NULL");
+                EnsureColumnExists(connection, "Reminders", "ScriptParameters", "TEXT NOT NULL DEFAULT ''");
+                EnsureColumnExists(connection, "Reminders", "DateText", "TEXT NOT NULL DEFAULT ''");
+                EnsureColumnExists(connection, "ReminderTriggerLogs", "ScriptExecutionLogId", "INTEGER NULL");
+
+                Log.Debug("ReminderService: 提醒数据表与索引检查完成。");
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "ReminderService: 初始化提醒表结构失败");
+                throw;
+            }
         }
 
         /// <summary>
@@ -163,6 +174,7 @@ namespace ToolBox.Services
         /// </summary>
         public long SaveReminder(Reminder reminder)
         {
+            Log.Information("ReminderService: 正在保存提醒 '{Title}' (ID = {Id})", reminder.Title, reminder.Id);
             using var connection = new SqliteConnection(_connectionString);
             connection.Open();
 
@@ -178,6 +190,7 @@ namespace ToolBox.Services
                     SELECT last_insert_rowid();";
                 BindReminderParameters(insertCommand, reminder, now, now);
                 reminder.Id = (long)insertCommand.ExecuteScalar()!;
+                Log.Debug("ReminderService: 新增提醒成功，生成的 ID = {Id}", reminder.Id);
                 return reminder.Id;
             }
 
@@ -202,6 +215,7 @@ namespace ToolBox.Services
             BindReminderParameters(updateCommand, reminder, reminder.CreatedAt == default ? now : reminder.CreatedAt.ToString("o"), now);
             updateCommand.Parameters.AddWithValue("$id", reminder.Id);
             updateCommand.ExecuteNonQuery();
+            Log.Debug("ReminderService: 更新提醒成功 (ID = {Id})", reminder.Id);
             return reminder.Id;
         }
 
@@ -210,6 +224,7 @@ namespace ToolBox.Services
         /// </summary>
         public void DeleteReminder(long reminderId)
         {
+            Log.Warning("ReminderService: 正在删除提醒 ID = {Id}", reminderId);
             using var connection = new SqliteConnection(_connectionString);
             connection.Open();
 
@@ -222,6 +237,7 @@ namespace ToolBox.Services
             reminderCommand.CommandText = "DELETE FROM Reminders WHERE Id = $id";
             reminderCommand.Parameters.AddWithValue("$id", reminderId);
             reminderCommand.ExecuteNonQuery();
+            Log.Information("ReminderService: 提醒 ID = {Id} 及其关联触发记录已成功删除", reminderId);
         }
 
         /// <summary>
@@ -229,6 +245,7 @@ namespace ToolBox.Services
         /// </summary>
         public void SetReminderEnabled(long reminderId, bool isEnabled)
         {
+            Log.Information("ReminderService: 设置提醒启用状态 ID = {Id} -> Enabled = {IsEnabled}", reminderId, isEnabled);
             using var connection = new SqliteConnection(_connectionString);
             connection.Open();
 

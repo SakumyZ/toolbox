@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.IO;
 using ToolBox.Services;
 using WinRT.Interop;
+using Serilog;
 
 namespace ToolBox
 {
@@ -21,7 +22,7 @@ namespace ToolBox
         private static Mutex? _mutex;
 
         /// <summary>
-        /// 主窗口实例，供 FileOpenPicker 等需要窗口句柄的 API 使用
+        /// 主窗口实例，供 FileOpenPicker 等需要窗口句柄 hometown 的 API 使用
         /// </summary>
         public static Window? MainWindowInstance { get; private set; }
 
@@ -93,14 +94,20 @@ namespace ToolBox
         public App()
         {
             System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+            
+            // 初始化日志引擎
+            LogService.Initialize();
+
             // 注册全局异常以便尽早记录问题
             AppDomain.CurrentDomain.UnhandledException += (s, e) =>
             {
-                TryWriteStartupLog(e.ExceptionObject?.ToString() ?? "UnhandledException");
+                var exObj = e.ExceptionObject as Exception;
+                Log.Fatal(exObj, "未捕获的全局异常: {Message}", exObj?.Message ?? "未知错误");
             };
             TaskScheduler.UnobservedTaskException += (s, e) =>
             {
-                TryWriteStartupLog(e.Exception?.ToString() ?? "UnobservedTaskException");
+                Log.Fatal(e.Exception, "未观察到的 Task 异常: {Message}", e.Exception?.Message);
+                e.SetObserved();
             };
 
             try
@@ -109,7 +116,7 @@ namespace ToolBox
             }
             catch (Exception ex)
             {
-                TryWriteStartupLog(ex.ToString());
+                Log.Fatal(ex, "InitializeComponent 崩溃");
                 throw;
             }
         }
@@ -119,12 +126,15 @@ namespace ToolBox
         /// </summary>
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
-            // ��实例检测
+            Log.Information("应用程序启动中 (OnLaunched)...");
+
+            // 单实例检测
             bool createdNew;
             _mutex = new Mutex(true, MutexName, out createdNew);
 
             if (!createdNew)
             {
+                Log.Warning("检测到已有 ToolBox 实例运行，激活现有窗口并退出。");
                 // 已有实例在运行，找到它的窗口并激活
                 _mutex.Dispose();
                 _mutex = null;
@@ -140,32 +150,24 @@ namespace ToolBox
                 _window.Activate();
                 InitializeDashboardProviders();
                 ReminderSchedulerService.Instance.Start();
+
+                // 数据库和服务就绪后，从 AppSettings 载入用户设置的日志等级
+                LogService.LoadLevelFromSettings();
             }
             catch (Exception ex)
             {
-                TryWriteStartupLog(ex.ToString());
+                Log.Fatal(ex, "MainWindow 启动或依赖服务启动失败");
                 throw;
             }
 
             _window.Closed += (sender, eventArgs) =>
             {
+                Log.Information("主窗口已关闭，正在卸载服务并释放资源...");
                 ReminderSchedulerService.Instance.Dispose();
                 _mutex?.Dispose();
                 _mutex = null;
+                LogService.CloseAndFlush();
             };
-        }
-
-        private static void TryWriteStartupLog(string content)
-        {
-            Console.WriteLine($"[Fatal Error] {content}");
-            try
-            {
-                var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ToolBox");
-                Directory.CreateDirectory(appData);
-                var logPath = Path.Combine(appData, "startup_error.txt");
-                File.AppendAllText(logPath, DateTime.Now.ToString("o") + "\n" + content + "\n\n");
-            }
-            catch { }
         }
 
         /// <summary>

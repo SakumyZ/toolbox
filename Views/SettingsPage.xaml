@@ -80,6 +80,41 @@
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    TextWrapping="Wrap" />
                     </Grid>
+
+                    <!-- 日志管理卡片 -->
+                    <Grid Padding="16,14" CornerRadius="8"
+                          Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                          BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                          RowDefinitions="Auto,Auto,Auto" Margin="0,10,0,0">
+                        <TextBlock Text="日志管理" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,12" />
+                        <!-- 日志级别 -->
+                        <Grid Grid.Row="1" ColumnDefinitions="Auto,*" Margin="0,0,0,16">
+                            <TextBlock Text="日志级别" VerticalAlignment="Center" MinWidth="100" />
+                            <ComboBox x:Name="LogLevelBox" Grid.Column="1" SelectedIndex="2" Width="150"
+                                      SelectionChanged="LogLevelBox_SelectionChanged">
+                                <ComboBoxItem Tag="Verbose">Verbose (详细)</ComboBoxItem>
+                                <ComboBoxItem Tag="Debug">Debug (调试)</ComboBoxItem>
+                                <ComboBoxItem Tag="Information">Information (普通)</ComboBoxItem>
+                                <ComboBoxItem Tag="Warning">Warning (警告)</ComboBoxItem>
+                                <ComboBoxItem Tag="Error">Error (错误)</ComboBoxItem>
+                            </ComboBox>
+                        </Grid>
+                        <!-- 操作按钮 -->
+                        <Grid Grid.Row="2" ColumnDefinitions="Auto,Auto" ColumnSpacing="8">
+                            <Button Click="OpenLogFolder_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE8B7;" FontSize="12" />
+                                    <TextBlock Text="打开日志文件夹" />
+                                </StackPanel>
+                            </Button>
+                            <Button Grid.Column="1" Click="ClearLogs_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE74D;" FontSize="12" />
+                                    <TextBlock Text="清理旧日志" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+                    </Grid>
                 </StackPanel>
 
                 <!-- 右侧：静态预览 -->

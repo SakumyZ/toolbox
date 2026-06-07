@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using Microsoft.Data.Sqlite;
 using ToolBox.Models;
+using Serilog;
 
 namespace ToolBox.Services
 {
@@ -35,7 +36,7 @@ namespace ToolBox.Services
         /// </summary>
         public NotificationSettings GetSettings()
         {
-            Console.WriteLine("[NotificationSettingsService] Loading settings...");
+            Log.Debug("NotificationSettingsService: 正在载入通知设置...");
             using var connection = new SqliteConnection(_connectionString);
             connection.Open();
 
@@ -49,7 +50,7 @@ namespace ToolBox.Services
                 ColorTheme = ParseEnum(colorThemeStr, NotificationColorTheme.System),
                 AutoCloseMilliseconds = NormalizeAutoCloseMilliseconds(int.TryParse(autoCloseMsStr, out var ms) ? ms : NotificationAutoCloseDurations.Default)
             };
-            Console.WriteLine($"[NotificationSettingsService] Loaded settings: DisplayStyle={settings.DisplayStyle}, ColorTheme={settings.ColorTheme}, AutoClose={settings.AutoCloseMilliseconds}ms");
+            Log.Debug("NotificationSettingsService: 通知设置载入完成: DisplayStyle={DisplayStyle}, ColorTheme={ColorTheme}, AutoClose={AutoClose}ms", settings.DisplayStyle, settings.ColorTheme, settings.AutoCloseMilliseconds);
             return settings;
         }
 
@@ -63,7 +64,7 @@ namespace ToolBox.Services
                 throw new ArgumentNullException(nameof(settings));
             }
 
-            Console.WriteLine($"[NotificationSettingsService] Saving settings: DisplayStyle={settings.DisplayStyle}, ColorTheme={settings.ColorTheme}, AutoClose={settings.AutoCloseMilliseconds}ms");
+            Log.Information("NotificationSettingsService: 正在保存通知设置: DisplayStyle={DisplayStyle}, ColorTheme={ColorTheme}, AutoClose={AutoClose}ms", settings.DisplayStyle, settings.ColorTheme, settings.AutoCloseMilliseconds);
             var normalizedMs = NormalizeAutoCloseMilliseconds(settings.AutoCloseMilliseconds);
 
             using var connection = new SqliteConnection(_connectionString);
@@ -143,16 +144,7 @@ namespace ToolBox.Services
             }
             catch (SqliteException ex)
             {
-                Console.WriteLine($"[NotificationSettingsService] GetSettingValue SQLite error for key '{key}': {ex}");
-                try
-                {
-                    var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ToolBox");
-                    Directory.CreateDirectory(appData);
-                    var logPath = Path.Combine(appData, "nav_error.txt");
-                    File.AppendAllText(logPath, DateTime.Now.ToString("o") + "\nGetSettingValue SQLite error: " + ex.ToString() + "\n\n");
-                }
-                catch { }
-
+                Log.Error(ex, "NotificationSettingsService: 从 AppSettings 读取键值 '{Key}' 时发生数据库异常", key);
                 return defaultValue ?? string.Empty;
             }
         }

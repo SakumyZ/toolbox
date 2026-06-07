@@ -5,6 +5,7 @@ using System.IO;
 using System.Text.RegularExpressions;
 using Microsoft.Data.Sqlite;
 using ToolBox.Models;
+using Serilog;
 
 namespace ToolBox.Services
 {
@@ -40,25 +41,34 @@ namespace ToolBox.Services
 
         private void InitializeTables()
         {
-            using var connection = new SqliteConnection(_connectionString);
-            connection.Open();
+            try
+            {
+                using var connection = new SqliteConnection(_connectionString);
+                connection.Open();
 
-            var command = connection.CreateCommand();
-            command.CommandText = @"
-                CREATE TABLE IF NOT EXISTS SshConfigPresets (
-                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    Name TEXT NOT NULL UNIQUE,
-                    Description TEXT NOT NULL DEFAULT '',
-                    Content TEXT NOT NULL,
-                    IsActive INTEGER NOT NULL DEFAULT 0,
-                    LastUsedAt TEXT NULL,
-                    CreatedAt TEXT NOT NULL,
-                    UpdatedAt TEXT NOT NULL
-                );
+                var command = connection.CreateCommand();
+                command.CommandText = @"
+                    CREATE TABLE IF NOT EXISTS SshConfigPresets (
+                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        Name TEXT NOT NULL UNIQUE,
+                        Description TEXT NOT NULL DEFAULT '',
+                        Content TEXT NOT NULL,
+                        IsActive INTEGER NOT NULL DEFAULT 0,
+                        LastUsedAt TEXT NULL,
+                        CreatedAt TEXT NOT NULL,
+                        UpdatedAt TEXT NOT NULL
+                    );
 
-                CREATE INDEX IF NOT EXISTS IX_SshConfigPresets_IsActive ON SshConfigPresets(IsActive);
-            ";
-            command.ExecuteNonQuery();
+                    CREATE INDEX IF NOT EXISTS IX_SshConfigPresets_IsActive ON SshConfigPresets(IsActive);
+                ";
+                command.ExecuteNonQuery();
+                Log.Debug("SshConfigService: SSH Config 预设表初始化完成。");
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "SshConfigService: 初始化 SSH 数据库表失败");
+                throw;
+            }
         }
 
         /// <summary>
@@ -134,6 +144,7 @@ namespace ToolBox.Services
         /// </summary>
         public (bool success, string message, long presetId) SavePreset(SshConfigPreset preset)
         {
+            Log.Information("SshConfigService: 正在保存 SSH Config 预设 '{PresetName}' (ID = {Id})", preset.Name, preset.Id);
             using var connection = new SqliteConnection(_connectionString);
             connection.Open();
 
@@ -150,6 +161,7 @@ namespace ToolBox.Services
                         SELECT last_insert_rowid();";
                     BindParameters(insertCommand, preset, now, now);
                     preset.Id = (long)insertCommand.ExecuteScalar()!;
+                    Log.Debug("SshConfigService: 新增 SSH Config 预设成功，ID = {Id}", preset.Id);
                     return (true, "预设已保存", preset.Id);
                 }
 
@@ -166,10 +178,12 @@ namespace ToolBox.Services
                 BindParameters(updateCommand, preset, preset.CreatedAt == default ? now : preset.CreatedAt.ToString("o"), now);
                 updateCommand.Parameters.AddWithValue("$id", preset.Id);
                 updateCommand.ExecuteNonQuery();
+                Log.Debug("SshConfigService: 更新 SSH Config 预设成功 (ID = {Id})", preset.Id);
                 return (true, "预设已更新", preset.Id);
             }
             catch (SqliteException ex) when (ex.SqliteErrorCode == 19)
             {
+                Log.Warning("SshConfigService: 保存预设失败，名称已存在: '{PresetName}'", preset.Name);
                 return (false, "预设名称已存在，请换一个名称", preset.Id);
             }
         }
@@ -179,6 +193,7 @@ namespace ToolBox.Services
         /// </summary>
         public void DeletePreset(long presetId)
         {
+            Log.Warning("SshConfigService: 正在删除 SSH Config 预设 ID = {Id}", presetId);
             using var connection = new SqliteConnection(_connectionString);
             connection.Open();
 
@@ -186,6 +201,7 @@ namespace ToolBox.Services
             command.CommandText = "DELETE FROM SshConfigPresets WHERE Id = $id";
             command.Parameters.AddWithValue("$id", presetId);
             command.ExecuteNonQuery();
+            Log.Information("SshConfigService: SSH Config 预设 ID = {Id} 已删除", presetId);
         }
 
         /// <summary>
@@ -209,9 +225,11 @@ namespace ToolBox.Services
             var preset = GetPreset(presetId);
             if (preset == null)
             {
+                Log.Warning("SshConfigService: 激活预设失败，找不到 ID = {Id}", presetId);
                 return (false, "未找到指定预设");
             }
 
+            Log.Information("SshConfigService: 正在请求激活预设 '{PresetName}' (ID = {Id})...", preset.Name, presetId);
             try
             {
                 Directory.CreateDirectory(_sshDirectory);
@@ -221,9 +239,11 @@ namespace ToolBox.Services
                     var backupPath = Path.Combine(_sshDirectory,
                         $"config.backup.{DateTime.Now:yyyyMMddHHmmss}");
                     File.Copy(_configPath, backupPath, overwrite: true);
+                    Log.Information("SshConfigService: 已自动备份当前 SSH config 至 '{BackupPath}'", backupPath);
                 }
 
                 File.WriteAllText(_configPath, NormalizeLineEndings(preset.Content));
+                Log.Information("SshConfigService: 已成功将预设内容写入系统 SSH 配置文件: '{ConfigPath}'", _configPath);
 
                 using var connection = new SqliteConnection(_connectionString);
                 connection.Open();
@@ -245,10 +265,12 @@ namespace ToolBox.Services
                 activateCommand.Parameters.AddWithValue("$id", presetId);
                 activateCommand.ExecuteNonQuery();
 
+                Log.Information("SshConfigService: 预设 '{PresetName}' (ID = {Id}) 状态标记为 Active", preset.Name, presetId);
                 return (true, $"已切换到预设：{preset.Name}");
             }
             catch (Exception ex)
             {
+                Log.Error(ex, "SshConfigService: 切换/覆盖 SSH config 失败");
                 return (false, $"切换失败：{ex.Message}");
             }
         }

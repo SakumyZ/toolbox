@@ -10,6 +10,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 using ToolBox.Models;
+using Serilog;
 
 namespace ToolBox.Services
 {
@@ -35,6 +36,7 @@ namespace ToolBox.Services
             var dbPath = Path.Combine(_appDataPath, "snippets.db");
             _connectionString = $"Data Source={dbPath}";
 
+            Log.Information("ScriptManagerService: 正在连接脚本库数据库: {DbPath}", dbPath);
             InitializeTables();
         }
 
@@ -209,11 +211,13 @@ namespace ToolBox.Services
 
                 ReplaceScriptParameters(connection, transaction, script.Id, script.Parameters);
                 transaction.Commit();
+                Log.Information("ScriptManagerService: 脚本 '{ScriptName}' 保存成功 (ID = {ScriptId})", script.Name, script.Id);
                 return (true, isNewScript ? "脚本已创建" : "脚本已保存", script.Id);
             }
             catch (Exception ex)
             {
                 transaction.Rollback();
+                Log.Error(ex, "ScriptManagerService: 保存脚本 '{ScriptName}' 发生错误", script.Name);
                 return (false, $"保存失败：{ex.Message}", script.Id);
             }
         }
@@ -223,9 +227,11 @@ namespace ToolBox.Services
         /// </summary>
         public (bool success, string message, long scriptId) DuplicateScript(long scriptId)
         {
+            Log.Information("ScriptManagerService: 正在复制脚本 ID = {ScriptId}", scriptId);
             var source = GetScript(scriptId);
             if (source == null)
             {
+                Log.Warning("ScriptManagerService: 复制脚本失败，找不到脚本 ID = {ScriptId}", scriptId);
                 return (false, "未找到要复制的脚本", 0);
             }
 
@@ -266,6 +272,7 @@ namespace ToolBox.Services
         /// </summary>
         public void DeleteScript(long scriptId)
         {
+            Log.Warning("ScriptManagerService: 正在删除脚本 ID = {ScriptId}", scriptId);
             var script = GetScript(scriptId);
 
             using var connection = new SqliteConnection(_connectionString);
@@ -288,14 +295,23 @@ namespace ToolBox.Services
 
             if (script == null)
             {
+                Log.Warning("ScriptManagerService: 脚本 ID = {ScriptId} 数据库记录已删除，但找不到其本地文件定义", scriptId);
                 return;
             }
 
             var scriptDirectory = Path.Combine(_scriptRootPath, scriptId.ToString(CultureInfo.InvariantCulture));
             if (Directory.Exists(scriptDirectory))
             {
-                Directory.Delete(scriptDirectory, recursive: true);
+                try
+                {
+                    Directory.Delete(scriptDirectory, recursive: true);
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "ScriptManagerService: 无法物理删除脚本托管目录: {ScriptDirectory}", scriptDirectory);
+                }
             }
+            Log.Information("ScriptManagerService: 脚本 ID = {ScriptId} 及其本地托管文件已成功删除", scriptId);
         }
 
         /// <summary>
@@ -337,6 +353,7 @@ namespace ToolBox.Services
             long? reminderId,
             long? existingLogId)
         {
+            Log.Information("ScriptManagerService: 准备启动后台脚本执行 -> '{ScriptName}' (ID = {ScriptId}, 来源 = '{Source}')", script.Name, script.Id, source);
             var result = new ScriptExecutionResult
             {
                 StartedAt = DateTime.Now
@@ -460,9 +477,11 @@ namespace ToolBox.Services
                         ? $"执行完成，退出码 {result.ExitCode}"
                         : $"执行失败，退出码 {result.ExitCode}";
                 }
+                Log.Information("ScriptManagerService: 脚本 '{ScriptName}' 后台执行完成，退出码: {ExitCode}, 成功 = {Success}", script.Name, result.ExitCode, result.Success);
             }
             catch (Exception ex)
             {
+                Log.Error(ex, "ScriptManagerService: 脚本 '{ScriptName}' 执行发生异常", script.Name);
                 result.Success = false;
                 result.Message = $"执行异常：{ex.Message}";
             }
@@ -695,9 +714,11 @@ namespace ToolBox.Services
         /// </summary>
         public (bool success, string message) StartScriptInTerminal(ScriptDefinition script, Dictionary<long, string> parameterValues)
         {
+            Log.Information("ScriptManagerService: 准备在新终端启动交互式脚本 -> '{ScriptName}' (ID = {ScriptId})", script.Name, script.Id);
             var scriptPath = GetScriptAbsolutePath(script);
             if (!File.Exists(scriptPath))
             {
+                Log.Error("ScriptManagerService: 启动终端失败，脚本文件不存在: {ScriptPath}", scriptPath);
                 return (false, $"脚本文件不存在：{scriptPath}");
             }
 
@@ -705,6 +726,7 @@ namespace ToolBox.Services
             var startInfo = BuildTerminalStartInfo(script, scriptPath, workingDirectory, parameterValues);
             if (startInfo == null)
             {
+                Log.Error("ScriptManagerService: 无法为脚本创建终端进程");
                 return (false, "无法为当前脚本创建终端进程");
             }
 
@@ -722,11 +744,13 @@ namespace ToolBox.Services
                     parameterValues);
 
                 Process.Start(startInfo);
+                Log.Information("ScriptManagerService: 成功在新终端启动进程 '{FileName}'", startInfo.FileName);
                 CompleteLaunchedExecutionLog(launchLogId.Value, startedAt, "已在新终端中启动脚本");
                 return (true, "已在新终端中启动脚本");
             }
             catch (Exception ex)
             {
+                Log.Error(ex, "ScriptManagerService: 启动终端进程发生异常");
                 if (launchLogId.HasValue)
                 {
                     CompleteFailedExecutionLog(launchLogId.Value, startedAt, $"启动终端失败：{ex.Message}");

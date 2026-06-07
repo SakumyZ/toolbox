@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Controls;
 using ToolBox.Services;
 using ToolBox.Views;
 using WinRT.Interop;
+using Serilog;
 
 namespace ToolBox
 {
@@ -23,17 +24,11 @@ namespace ToolBox
                 RegisterHotkeys();
                 // 捕获 Frame 导航失败以记录异常（用于定位 Settings 点击崩溃）
                 ContentFrame.NavigationFailed += ContentFrame_NavigationFailed;
+                Log.Information("MainWindow 初始化成功。");
             }
             catch (Exception ex)
             {
-                try
-                {
-                    var appData = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ToolBox");
-                    System.IO.Directory.CreateDirectory(appData);
-                    var logPath = System.IO.Path.Combine(appData, "startup_error.txt");
-                    System.IO.File.AppendAllText(logPath, DateTime.Now.ToString("o") + "\n" + ex.ToString() + "\n\n");
-                }
-                catch { }
+                Log.Fatal(ex, "MainWindow 初始化失败");
                 throw;
             }
         }
@@ -53,16 +48,19 @@ namespace ToolBox
             var subClassProc = new SUBCLASSPROC(WndProc);
             _subClassProcRef = subClassProc; // 防止 GC 回收
             SetWindowSubclass(hWnd, subClassProc, UIntPtr.Zero, UIntPtr.Zero);
+            Log.Debug("全局热键与窗口消息子类化 Hook 已注册。");
 
             this.Closed += (s, e) =>
             {
                 _hotkeyService.Dispose();
                 RemoveWindowSubclass(hWnd, subClassProc, UIntPtr.Zero);
+                Log.Debug("主窗口已关闭，注销全局热键与 Hook。");
             };
         }
 
         private void OnQuickSearchRequested()
         {
+            Log.Information("触发全局热键：打开快速搜索窗口。");
             DispatcherQueue.TryEnqueue(() =>
             {
                 _quickSearchWindow = new QuickSearchWindow();
@@ -72,6 +70,7 @@ namespace ToolBox
 
         private void OnQuickAddRequested()
         {
+            Log.Information("触发全局热键：打开快速添加窗口。");
             DispatcherQueue.TryEnqueue(() =>
             {
                 _quickAddWindow = new QuickAddWindow();
@@ -117,16 +116,7 @@ namespace ToolBox
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[Navigation SelectionChanged Error] {ex}");
-                    try
-                    {
-                        var appData = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ToolBox");
-                        System.IO.Directory.CreateDirectory(appData);
-                        var logPath = System.IO.Path.Combine(appData, "nav_error.txt");
-                        System.IO.File.AppendAllText(logPath, DateTime.Now.ToString("o") + "\n" + ex.ToString() + "\n\n");
-                    }
-                    catch { }
-                    // 已记录异常，避免导航异常导致整个应用崩溃。
+                    Log.Error(ex, "导航至设置页面失败");
                     return;
                 }
             }
@@ -140,15 +130,7 @@ namespace ToolBox
 
         private void ContentFrame_NavigationFailed(object sender, Microsoft.UI.Xaml.Navigation.NavigationFailedEventArgs e)
         {
-            Console.WriteLine($"[Navigation Failed Error] {e.Exception}");
-            try
-            {
-                var appData = System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData), "ToolBox");
-                System.IO.Directory.CreateDirectory(appData);
-                var logPath = System.IO.Path.Combine(appData, "nav_error.txt");
-                System.IO.File.AppendAllText(logPath, DateTime.Now.ToString("o") + "\nNavigationFailed: " + e.Exception?.ToString() + "\n\n");
-            }
-            catch { }
+            Log.Error(e.Exception, "框架导航失败: 目标页面 {SourcePageType}", e.SourcePageType);
         }
 
         /// <summary>
@@ -185,6 +167,7 @@ namespace ToolBox
         /// </summary>
         private void NavigateToPage(string pageTag, object? parameter = null)
         {
+            Log.Information("正在导航至: {PageTag}", pageTag);
             switch (pageTag)
             {
                 case "Settings":

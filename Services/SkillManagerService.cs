@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using Microsoft.Data.Sqlite;
 using ToolBox.Models;
+using Serilog;
 
 namespace ToolBox.Services
 {
@@ -76,6 +77,8 @@ namespace ToolBox.Services
                 return (false, "启用目录和停用目录不能相同");
             }
 
+            Log.Information("SkillManagerService: 正在保存 Skill 目录配置 -> Active: '{ActivePath}', Inactive: '{InactivePath}'", normalizedActivePath, normalizedInactivePath);
+
             Directory.CreateDirectory(normalizedActivePath);
             Directory.CreateDirectory(normalizedInactivePath);
 
@@ -97,6 +100,7 @@ namespace ToolBox.Services
             var metadataMap = GetMetadataMap();
             var skills = new Dictionary<string, SkillItem>(StringComparer.OrdinalIgnoreCase);
 
+            Log.Debug("SkillManagerService: 正在从目录扫描 Skill 列表...");
             LoadSkillsFromDirectory(settings.ActiveSkillsPath, true, metadataMap, skills);
             LoadSkillsFromDirectory(settings.InactiveSkillsPath, false, metadataMap, skills);
 
@@ -117,6 +121,7 @@ namespace ToolBox.Services
                 return (false, "Skill 标识不能为空");
             }
 
+            Log.Information("SkillManagerService: 正在保存 Skill 元数据 -> ID: '{SkillId}', 别名: '{Alias}', 分类: '{Category}'", skillId, alias, category);
             using var connection = new SqliteConnection(_connectionString);
             connection.Open();
 
@@ -151,9 +156,12 @@ namespace ToolBox.Services
             var sourcePath = Path.Combine(sourceRoot, skillId);
             var targetPath = Path.Combine(targetRoot, skillId);
 
+            Log.Information("SkillManagerService: 正在切换 Skill 状态 -> ID: '{SkillId}', 激活 = {IsActive}", skillId, isActive);
+
             // 如果源目录不存在，则说明状态已发生变化或 skill 不存在。
             if (!Directory.Exists(sourcePath))
             {
+                Log.Warning("SkillManagerService: 切换状态失败，找不到源目录: {SourcePath}", sourcePath);
                 return (false, "未找到对应的 skill 目录，请先刷新列表");
             }
 
@@ -162,6 +170,7 @@ namespace ToolBox.Services
             // 如果目标目录已存在，则不能直接覆盖，避免误伤用户已有文件。
             if (Directory.Exists(targetPath))
             {
+                Log.Error("SkillManagerService: 切换状态失败，目标目录已存在: {TargetPath}", targetPath);
                 return (false, $"目标目录已存在：{targetPath}");
             }
 
@@ -170,19 +179,23 @@ namespace ToolBox.Services
                 // 如果源目录和目标目录在同一盘符，则直接移动即可。
                 if (HasSameVolumeRoot(sourcePath, targetPath))
                 {
+                    Log.Debug("SkillManagerService: 在相同逻辑卷下移动目录 -> '{SourcePath}' 到 '{TargetPath}'", sourcePath, targetPath);
                     Directory.Move(sourcePath, targetPath);
                 }
                 else
                 {
                     // 如果跨盘移动，则改为复制后删除源目录，避免 Directory.Move 抛异常。
+                    Log.Debug("SkillManagerService: 跨盘移动目录，执行复制与删除 -> '{SourcePath}' 到 '{TargetPath}'", sourcePath, targetPath);
                     CopyDirectory(sourcePath, targetPath);
                     Directory.Delete(sourcePath, recursive: true);
                 }
 
+                Log.Information("SkillManagerService: Skill '{SkillId}' 状态切换成功 (激活 = {IsActive})", skillId, isActive);
                 return (true, isActive ? "Skill 已启用" : "Skill 已停用");
             }
             catch (Exception ex)
             {
+                Log.Error(ex, "SkillManagerService: 状态切换发生异常，ID = '{SkillId}'", skillId);
                 // 如果复制过程中产生了半成品目录，则尝试回滚清理。
                 if (Directory.Exists(targetPath))
                 {

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using Microsoft.Data.Sqlite;
 using ToolBox.Models;
+using Serilog;
 
 namespace ToolBox.Services
 {
@@ -41,6 +42,7 @@ namespace ToolBox.Services
             Directory.CreateDirectory(appDataPath);
             var dbPath = Path.Combine(appDataPath, "snippets.db");
             _connectionString = $"Data Source={dbPath}";
+            Log.Information("DatabaseService: 正在连接/初始化数据库: {DbPath}", dbPath);
             InitializeDatabase();
         }
 
@@ -49,51 +51,60 @@ namespace ToolBox.Services
         /// </summary>
         private void InitializeDatabase()
         {
-            using var connection = new SqliteConnection(_connectionString);
-            connection.Open();
+            try
+            {
+                using var connection = new SqliteConnection(_connectionString);
+                connection.Open();
 
-            var command = connection.CreateCommand();
-            command.CommandText = @"
-                CREATE TABLE IF NOT EXISTS Folders (
-                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    Name TEXT NOT NULL,
-                    ParentId INTEGER NOT NULL DEFAULT 0,
-                    SortOrder INTEGER NOT NULL DEFAULT 0
-                );
+                var command = connection.CreateCommand();
+                command.CommandText = @"
+                    CREATE TABLE IF NOT EXISTS Folders (
+                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        Name TEXT NOT NULL,
+                        ParentId INTEGER NOT NULL DEFAULT 0,
+                        SortOrder INTEGER NOT NULL DEFAULT 0
+                    );
 
-                CREATE TABLE IF NOT EXISTS Tags (
-                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    Name TEXT NOT NULL UNIQUE,
-                    Color TEXT NOT NULL DEFAULT '#0078D4'
-                );
+                    CREATE TABLE IF NOT EXISTS Tags (
+                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        Name TEXT NOT NULL UNIQUE,
+                        Color TEXT NOT NULL DEFAULT '#0078D4'
+                    );
 
-                CREATE TABLE IF NOT EXISTS Snippets (
-                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    Title TEXT NOT NULL,
-                    Code TEXT NOT NULL,
-                    Language TEXT NOT NULL DEFAULT '',
-                    Description TEXT NOT NULL DEFAULT '',
-                    FolderId INTEGER NOT NULL DEFAULT 0,
-                    IsFavorite INTEGER NOT NULL DEFAULT 0,
-                    UsageCount INTEGER NOT NULL DEFAULT 0,
-                    CreatedAt TEXT NOT NULL,
-                    UpdatedAt TEXT NOT NULL
-                );
+                    CREATE TABLE IF NOT EXISTS Snippets (
+                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        Title TEXT NOT NULL,
+                        Code TEXT NOT NULL,
+                        Language TEXT NOT NULL DEFAULT '',
+                        Description TEXT NOT NULL DEFAULT '',
+                        FolderId INTEGER NOT NULL DEFAULT 0,
+                        IsFavorite INTEGER NOT NULL DEFAULT 0,
+                        UsageCount INTEGER NOT NULL DEFAULT 0,
+                        CreatedAt TEXT NOT NULL,
+                        UpdatedAt TEXT NOT NULL
+                    );
 
-                CREATE TABLE IF NOT EXISTS SnippetTags (
-                    SnippetId INTEGER NOT NULL,
-                    TagId INTEGER NOT NULL,
-                    PRIMARY KEY (SnippetId, TagId),
-                    FOREIGN KEY (SnippetId) REFERENCES Snippets(Id) ON DELETE CASCADE,
-                    FOREIGN KEY (TagId) REFERENCES Tags(Id) ON DELETE CASCADE
-                );
+                    CREATE TABLE IF NOT EXISTS SnippetTags (
+                        SnippetId INTEGER NOT NULL,
+                        TagId INTEGER NOT NULL,
+                        PRIMARY KEY (SnippetId, TagId),
+                        FOREIGN KEY (SnippetId) REFERENCES Snippets(Id) ON DELETE CASCADE,
+                        FOREIGN KEY (TagId) REFERENCES Tags(Id) ON DELETE CASCADE
+                    );
 
-                CREATE INDEX IF NOT EXISTS IX_Snippets_FolderId ON Snippets(FolderId);
-                CREATE INDEX IF NOT EXISTS IX_Snippets_IsFavorite ON Snippets(IsFavorite);
-                CREATE INDEX IF NOT EXISTS IX_Snippets_Language ON Snippets(Language);
-                CREATE INDEX IF NOT EXISTS IX_SnippetTags_TagId ON SnippetTags(TagId);
-            ";
-            command.ExecuteNonQuery();
+                    CREATE INDEX IF NOT EXISTS IX_Snippets_FolderId ON Snippets(FolderId);
+                    CREATE INDEX IF NOT EXISTS IX_Snippets_IsFavorite ON Snippets(IsFavorite);
+                    CREATE INDEX IF NOT EXISTS IX_Snippets_Language ON Snippets(Language);
+                    CREATE INDEX IF NOT EXISTS IX_SnippetTags_TagId ON SnippetTags(TagId);
+                ";
+                command.ExecuteNonQuery();
+                Log.Debug("DatabaseService: 数据库表结构初始化/检查完成。");
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "DatabaseService: 数据库初始化失败");
+                throw;
+            }
         }
 
         // ========== Folder CRUD ==========
@@ -129,6 +140,7 @@ namespace ToolBox.Services
         /// </summary>
         public long InsertFolder(SnippetFolder folder)
         {
+            Log.Information("DatabaseService: 新增文件夹 '{Name}'", folder.Name);
             using var connection = new SqliteConnection(_connectionString);
             connection.Open();
 
@@ -168,6 +180,7 @@ namespace ToolBox.Services
         /// </summary>
         public void DeleteFolder(long folderId)
         {
+            Log.Information("DatabaseService: 删除文件夹 ID = {FolderId}", folderId);
             using var connection = new SqliteConnection(_connectionString);
             connection.Open();
 
@@ -391,6 +404,7 @@ namespace ToolBox.Services
         /// </summary>
         public long InsertSnippet(Snippet snippet, List<long>? tagIds = null)
         {
+            Log.Information("DatabaseService: 新增代码片段 '{Title}' (语言: '{Language}')", snippet.Title, snippet.Language);
             using var connection = new SqliteConnection(_connectionString);
             connection.Open();
 
@@ -425,6 +439,7 @@ namespace ToolBox.Services
         /// </summary>
         public void UpdateSnippet(Snippet snippet, List<long>? tagIds = null)
         {
+            Log.Information("DatabaseService: 更新代码片段 '{Title}' (ID = {Id})", snippet.Title, snippet.Id);
             using var connection = new SqliteConnection(_connectionString);
             connection.Open();
 
@@ -457,6 +472,7 @@ namespace ToolBox.Services
         /// </summary>
         public void DeleteSnippet(long snippetId)
         {
+            Log.Information("DatabaseService: 删除代码片段 ID = {Id}", snippetId);
             using var connection = new SqliteConnection(_connectionString);
             connection.Open();
 

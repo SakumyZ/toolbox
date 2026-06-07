@@ -4,6 +4,7 @@ using System.Linq;
 using System.ServiceProcess;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
+using Serilog;
 
 namespace ToolBox.Services
 {
@@ -51,27 +52,36 @@ namespace ToolBox.Services
 
         private void InitializeTables()
         {
-            using var conn = new SqliteConnection(_connectionString);
-            conn.Open();
-            var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                CREATE TABLE IF NOT EXISTS FavoriteServices (
-                    ServiceName TEXT PRIMARY KEY
-                );
+            try
+            {
+                using var conn = new SqliteConnection(_connectionString);
+                conn.Open();
+                var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    CREATE TABLE IF NOT EXISTS FavoriteServices (
+                        ServiceName TEXT PRIMARY KEY
+                    );
 
-                CREATE TABLE IF NOT EXISTS ServiceGroups (
-                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    Name TEXT NOT NULL UNIQUE
-                );
+                    CREATE TABLE IF NOT EXISTS ServiceGroups (
+                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        Name TEXT NOT NULL UNIQUE
+                    );
 
-                CREATE TABLE IF NOT EXISTS ServiceGroupItems (
-                    GroupId INTEGER NOT NULL,
-                    ServiceName TEXT NOT NULL,
-                    PRIMARY KEY (GroupId, ServiceName),
-                    FOREIGN KEY (GroupId) REFERENCES ServiceGroups(Id) ON DELETE CASCADE
-                );
-            ";
-            cmd.ExecuteNonQuery();
+                    CREATE TABLE IF NOT EXISTS ServiceGroupItems (
+                        GroupId INTEGER NOT NULL,
+                        ServiceName TEXT NOT NULL,
+                        PRIMARY KEY (GroupId, ServiceName),
+                        FOREIGN KEY (GroupId) REFERENCES ServiceGroups(Id) ON DELETE CASCADE
+                    );
+                ";
+                cmd.ExecuteNonQuery();
+                Log.Debug("ServiceManagerService: 服务管理 SQLite 数据表初始化完成。");
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "ServiceManagerService: 初始化服务数据库表失败");
+                throw;
+            }
         }
 
         // ========== 服务查询 ==========
@@ -84,6 +94,7 @@ namespace ToolBox.Services
             var favorites = GetFavoriteServiceNames();
             var services = new List<ServiceInfo>();
 
+            Log.Debug("ServiceManagerService: 开始获取系统 Windows 服务列表...");
             foreach (var sc in ServiceController.GetServices())
             {
                 try
@@ -98,9 +109,10 @@ namespace ToolBox.Services
                         IsFavorite = favorites.Contains(sc.ServiceName)
                     });
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // 跳过无法访问的服务
+                    // 部分敏感系统服务可能无法访问其属性，不打印完整 StackTrace 仅记 Warning 级别
+                    Log.Warning("ServiceManagerService: 无法访问 Windows 服务 '{ServiceName}' 的属性: {Message}", sc.ServiceName, ex.Message);
                 }
                 finally
                 {
@@ -108,6 +120,7 @@ namespace ToolBox.Services
                 }
             }
 
+            Log.Debug("ServiceManagerService: Windows 服务列表获取完成，共 {Count} 个可用服务", services.Count);
             return services.OrderBy(s => s.DisplayName).ToList();
         }
 
@@ -138,20 +151,26 @@ namespace ToolBox.Services
         /// </summary>
         public async Task<(bool success, string message)> StartServiceAsync(string serviceName)
         {
+            Log.Information("ServiceManagerService: 正在请求启动服务 '{ServiceName}'...", serviceName);
             return await Task.Run(() =>
             {
                 try
                 {
                     using var sc = new ServiceController(serviceName);
                     if (sc.Status == ServiceControllerStatus.Running)
+                    {
+                        Log.Information("ServiceManagerService: 服务 '{ServiceName}' 已在运行中，无需重新启动", serviceName);
                         return (true, "服务已在运行中");
+                    }
 
                     sc.Start();
                     sc.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(15));
+                    Log.Information("ServiceManagerService: 服务 '{ServiceName}' 已成功启动: {DisplayName}", serviceName, sc.DisplayName);
                     return (true, $"已启动: {sc.DisplayName}");
                 }
                 catch (Exception ex)
                 {
+                    Log.Error(ex, "ServiceManagerService: 启动服务 '{ServiceName}' 失败", serviceName);
                     return (false, $"启动失败: {ex.Message}");
                 }
             });
@@ -162,23 +181,32 @@ namespace ToolBox.Services
         /// </summary>
         public async Task<(bool success, string message)> StopServiceAsync(string serviceName)
         {
+            Log.Information("ServiceManagerService: 正在请求停止服务 '{ServiceName}'...", serviceName);
             return await Task.Run(() =>
             {
                 try
                 {
                     using var sc = new ServiceController(serviceName);
                     if (sc.Status == ServiceControllerStatus.Stopped)
+                    {
+                        Log.Information("ServiceManagerService: 服务 '{ServiceName}' 已经是停止状态", serviceName);
                         return (true, "服务已停止");
+                    }
 
                     if (!sc.CanStop)
+                    {
+                        Log.Warning("ServiceManagerService: 服务 '{ServiceName}' 拒绝停止请求", serviceName);
                         return (false, "该服务不允许停止");
+                    }
 
                     sc.Stop();
                     sc.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(15));
+                    Log.Information("ServiceManagerService: 服务 '{ServiceName}' 已成功停止: {DisplayName}", serviceName, sc.DisplayName);
                     return (true, $"已停止: {sc.DisplayName}");
                 }
                 catch (Exception ex)
                 {
+                    Log.Error(ex, "ServiceManagerService: 停止服务 '{ServiceName}' 失败", serviceName);
                     return (false, $"停止失败: {ex.Message}");
                 }
             });
@@ -189,9 +217,13 @@ namespace ToolBox.Services
         /// </summary>
         public async Task<(bool success, string message)> RestartServiceAsync(string serviceName)
         {
+            Log.Information("ServiceManagerService: 正在请求重启服务 '{ServiceName}'...", serviceName);
             var stopResult = await StopServiceAsync(serviceName);
             if (!stopResult.success && !stopResult.message.Contains("已停止"))
+            {
+                Log.Error("ServiceManagerService: 重启服务 '{ServiceName}' 失败，无法停止服务", serviceName);
                 return stopResult;
+            }
 
             return await StartServiceAsync(serviceName);
         }
@@ -207,8 +239,9 @@ namespace ToolBox.Services
                 sc.Refresh();
                 return sc.Status.ToString();
             }
-            catch
+            catch (Exception ex)
             {
+                Log.Warning("ServiceManagerService: 获取服务 '{ServiceName}' 状态失败: {Message}", serviceName, ex.Message);
                 return "Unknown";
             }
         }

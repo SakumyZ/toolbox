@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ToolBox.Models;
+using Serilog;
 
 namespace ToolBox.Services
 {
@@ -42,6 +43,7 @@ namespace ToolBox.Services
                 return;
             }
 
+            Log.Information("ReminderSchedulerService: 正在启动提醒调度器后台任务...");
             _cancellationTokenSource = new CancellationTokenSource();
             _backgroundTask = Task.Run(() => RunLoopAsync(_cancellationTokenSource.Token));
             _ = CheckNowAsync();
@@ -83,6 +85,7 @@ namespace ToolBox.Services
                 return;
             }
 
+            Log.Debug("ReminderSchedulerService: 开始检查到期提醒...");
             try
             {
                 var now = DateTime.Now;
@@ -100,6 +103,7 @@ namespace ToolBox.Services
                         continue;
                     }
 
+                    Log.Information("ReminderSchedulerService: 触发提醒 '{Title}' (动作类型: {ActionType})", reminder.Title, reminder.ActionType);
                     bool success = false;
                     string? errorMessage = string.Empty;
 
@@ -126,9 +130,9 @@ namespace ToolBox.Services
                                     }
                                 }
                             }
-                            catch
+                            catch (Exception ex)
                             {
-                                // 忽略参数解析错误
+                                Log.Warning(ex, "ReminderSchedulerService: 提醒关联的脚本参数解析失败");
                             }
 
                             var scriptPath = _scriptManagerService.GetScriptAbsolutePath(script);
@@ -151,30 +155,41 @@ namespace ToolBox.Services
                                 logId);
                             OnRemindersChanged();
 
+                            Log.Information("ReminderSchedulerService: 正在后台运行提醒关联脚本 [{ScriptName}]", script.Name);
                             // 异步执行，不阻塞调度器
                             _ = Task.Run(async () =>
                             {
-                                var result = await _scriptManagerService.ExecuteScriptAsync(
-                                    script,
-                                    parameters,
-                                    null,
-                                    null,
-                                    ScriptExecutionSources.Reminder,
-                                    reminder.Id,
-                                    logId);
-                                _reminderService.UpdateTriggerStatus(
-                                    triggerLogId,
-                                    result.Success ? "Script Execution Success" : $"Script Failed: {result.Message}");
-                                OnRemindersChanged();
-
-                                var notifyReminder = new Reminder
+                                try
                                 {
-                                    Title = result.Success ? $"脚本 [{script.Name}] 执行成功" : $"脚本 [{script.Name}] 执行失败",
-                                    Message = result.Success ? $"按计划在后台运行完毕。\n{result.Message}" : $"发生错误：\n{result.Message}",
-                                    TimeText = reminder.TimeText
-                                };
-                                ShowCustomNotification(notifyReminder);
-                            });
+                                    var result = await _scriptManagerService.ExecuteScriptAsync(
+                                        script,
+                                        parameters,
+                                        null,
+                                        null,
+                                        ScriptExecutionSources.Reminder,
+                                        reminder.Id,
+                                        logId);
+                                    _reminderService.UpdateTriggerStatus(
+                                        triggerLogId,
+                                        result.Success ? "Script Execution Success" : $"Script Failed: {result.Message}");
+                                    OnRemindersChanged();
+
+                                    var notifyReminder = new Reminder
+                                    {
+                                        Title = result.Success ? $"脚本 [{script.Name}] 执行成功" : $"脚本 [{script.Name}] 执行失败",
+                                        Message = result.Success ? $"按计划在后台运行完毕。\n{result.Message}" : $"发生错误：\n{result.Message}",
+                                        TimeText = reminder.TimeText
+                                    };
+                                    ShowCustomNotification(notifyReminder);
+                                    Log.Information("ReminderSchedulerService: 提醒关联脚本 [{ScriptName}] 运行完毕 (成功 = {Success})", script.Name, result.Success);
+                                }
+                                catch (Exception ex)
+                                {
+                                    Log.Error(ex, "ReminderSchedulerService: 提醒关联脚本 [{ScriptName}] 执行时发生异常", script.Name);
+                                    _reminderService.UpdateTriggerStatus(triggerLogId, $"Script Exception: {ex.Message}");
+                                    OnRemindersChanged();
+                                }
+                             });
                             
                             // 对于定时脚本，我们默认触发就是成功的（至于脚本执行是否成功在后台记录）
                             success = true; 
@@ -183,6 +198,7 @@ namespace ToolBox.Services
                         {
                             success = false;
                             errorMessage = "Script not found";
+                            Log.Error("ReminderSchedulerService: 提醒关联的脚本 ID {ScriptId} 未找到", reminder.ScriptId.Value);
                         }
                     }
                     else
@@ -214,6 +230,7 @@ namespace ToolBox.Services
                     {
                         _reminderService.SetReminderEnabled(reminder.Id, false);
                         OnRemindersChanged();
+                        Log.Information("ReminderSchedulerService: 单次提醒 '{Title}' 触发后已自动停用", reminder.Title);
                     }
                 }
             }
@@ -327,6 +344,7 @@ namespace ToolBox.Services
 
         public void Dispose()
         {
+            Log.Information("ReminderSchedulerService: 正在释放提醒调度服务...");
             _cancellationTokenSource?.Cancel();
             _notificationService.Unregister();
             _checkLock.Dispose();
@@ -342,6 +360,7 @@ namespace ToolBox.Services
             var dispatcher = App.MainWindowInstance?.DispatcherQueue;
             if (dispatcher == null)
             {
+                Log.Warning("ReminderSchedulerService: 主窗口 Dispatcher 不可用，将系统通知作为兜底弹出");
                 // 如果没有主窗口（例如后台静默运行且窗口未初始化），则使用系统通知作为兜底
                 var ns = new NotificationService();
                 ns.ShowReminderNotification(reminder, out _);
@@ -402,12 +421,13 @@ namespace ToolBox.Services
                         AutoCloseMilliseconds = settings.AutoCloseMilliseconds
                     };
 
+                    Log.Debug("ReminderSchedulerService: 正在显示自定义应用内通知窗口: {Title}", visual.Title);
                     var windowManager = new NotificationWindowManager();
                     windowManager.Show(visual);
                 }
                 catch (System.Exception ex)
                 {
-                    System.Console.WriteLine($"[ReminderSchedulerService] Failed to show custom notification: {ex}");
+                    Log.Error(ex, "[ReminderSchedulerService] Failed to show custom notification");
                     // 发生异常时，使用系统通知作为兜底
                     var ns = new NotificationService();
                     ns.ShowReminderNotification(reminder, out _);

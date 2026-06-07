@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Net;
 using System.Runtime.InteropServices;
+using Serilog;
 
 namespace ToolBox.Services
 {
@@ -97,12 +98,14 @@ namespace ToolBox.Services
         /// </summary>
         public static List<PortEntry> GetAllPorts()
         {
+            Log.Debug("PortService: 开始扫描所有 TCP 和 UDP 端口...");
             _processCache.Clear();
             var entries = new List<PortEntry>();
 
             entries.AddRange(GetTcpPorts());
             entries.AddRange(GetUdpPorts());
 
+            Log.Debug("PortService: 端口扫描完成，共获取 {Count} 条连接记录", entries.Count);
             return entries;
         }
 
@@ -111,6 +114,7 @@ namespace ToolBox.Services
         /// </summary>
         public static List<PortEntry> GetListeningPorts()
         {
+            Log.Debug("PortService: 开始扫描监听状态端口...");
             _processCache.Clear();
             var entries = new List<PortEntry>();
 
@@ -127,6 +131,7 @@ namespace ToolBox.Services
                 entries.Add(entry); // UDP 没有状态，全部算"监听"
             }
 
+            Log.Debug("PortService: 监听端口扫描完成，共获取 {Count} 条监听记录", entries.Count);
             return entries;
         }
 
@@ -135,15 +140,19 @@ namespace ToolBox.Services
         /// </summary>
         public static bool KillProcess(int pid)
         {
+            Log.Warning("PortService: 正在尝试结束占用进程 PID = {Pid}", pid);
             try
             {
                 var process = Process.GetProcessById(pid);
+                string processName = process.ProcessName;
                 process.Kill();
                 process.WaitForExit(3000);
+                Log.Information("PortService: 成功结束进程 '{ProcessName}' (PID = {Pid})", processName, pid);
                 return true;
             }
-            catch
+            catch (Exception ex)
             {
+                Log.Error(ex, "PortService: 结束进程 PID = {Pid} 失败", pid);
                 return false;
             }
         }

@@ -50,6 +50,17 @@ namespace ToolBox.Views
             // 设置自动关闭毫秒数
             AutoCloseMillisecondsBox.Value = settings.AutoCloseMilliseconds;
 
+            // 加载日志级别设置
+            string currentLevel = LogService.LevelSwitch.MinimumLevel.ToString();
+            for (int i = 0; i < LogLevelBox.Items.Count; i++)
+            {
+                if (LogLevelBox.Items[i] is ComboBoxItem item && string.Equals(item.Tag?.ToString(), currentLevel, StringComparison.OrdinalIgnoreCase))
+                {
+                    LogLevelBox.SelectedIndex = i;
+                    break;
+                }
+            }
+
             UpdateStaticPreview();
             UpdatePreviewTipText();
         }
@@ -290,6 +301,37 @@ namespace ToolBox.Views
 
             var ms = (int)AutoCloseMillisecondsBox.Value;
             return _settingsService.NormalizeAutoCloseMilliseconds(ms);
+        }
+
+        private void LogLevelBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!_isLoaded || LogLevelBox == null || LogLevelBox.SelectedItem is not ComboBoxItem item || item.Tag == null)
+            {
+                return;
+            }
+
+            if (Enum.TryParse<Serilog.Events.LogEventLevel>(item.Tag.ToString(), out var level))
+            {
+                LogService.UpdateLogLevel(level);
+            }
+        }
+
+        private void OpenLogFolder_Click(object sender, RoutedEventArgs e)
+        {
+            LogService.OpenLogFolder();
+        }
+
+        private void ClearLogs_Click(object sender, RoutedEventArgs e)
+        {
+            LogService.ClearLogs();
+            var dialog = new ContentDialog
+            {
+                Title = "清理完成",
+                Content = "历史日志已清理完毕（当前日志文件因占用可能无法删除）。",
+                CloseButtonText = "确定",
+                XamlRoot = XamlRoot
+            };
+            _ = dialog.ShowAsync();
         }
     }
 }
