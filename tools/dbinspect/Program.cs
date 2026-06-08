@@ -22,47 +22,41 @@ try
     using var conn = new SqliteConnection(cs);
     conn.Open();
 
-    // list tables
+    // PRAGMA user_version
     using (var cmd = conn.CreateCommand())
     {
-        cmd.CommandText = "SELECT name, type, sql FROM sqlite_master WHERE type IN ('table','view') ORDER BY name;";
-        using var reader = cmd.ExecuteReader();
-        while (reader.Read())
-        {
-            var name = reader.GetString(0);
-            var type = reader.GetString(1);
-            var sql = reader.IsDBNull(2) ? "" : reader.GetString(2);
-            Console.WriteLine($"{type.ToUpper()}: {name}");
-            Console.WriteLine(sql);
-            Console.WriteLine(new string('-', 60));
-        }
+        cmd.CommandText = "PRAGMA user_version;";
+        Console.WriteLine($"PRAGMA user_version: {cmd.ExecuteScalar()}\n");
     }
 
-    Console.WriteLine("\nColumn info for key tables:\n");
-    var keyTables = new[] { "SshConfigPreset", "SshConfigPresets", "Reminder", "Reminders", "ScriptDefinition", "ScriptDefinitions", "AppSettings" };
-    foreach (var tbl in keyTables)
+    // list tables with row counts
+    var tables = new System.Collections.Generic.List<string>();
+    using (var cmd = conn.CreateCommand())
     {
-        using var cmd2 = conn.CreateCommand();
-        cmd2.CommandText = $"PRAGMA table_info('{tbl}');";
-        using var r2 = cmd2.ExecuteReader();
-        if (!r2.HasRows)
-        {
-            // skip
-            continue;
-        }
-        Console.WriteLine($"Table: {tbl}");
-        Console.WriteLine("cid | name | type | notnull | dflt_value | pk");
-        while (r2.Read())
-        {
-            var cid = r2.GetInt32(0);
-            var name = r2.IsDBNull(1) ? "" : r2.GetString(1);
-            var type = r2.IsDBNull(2) ? "" : r2.GetString(2);
-            var notnull = r2.GetInt32(3);
-            var dflt = r2.IsDBNull(4) ? "" : r2.GetString(4);
-            var pk = r2.GetInt32(5);
-            Console.WriteLine($"{cid} | {name} | {type} | {notnull} | {dflt} | {pk}");
-        }
-        Console.WriteLine(new string('=', 60));
+        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name;";
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+            tables.Add(reader.GetString(0));
+    }
+
+    Console.WriteLine($"{"Table",-30} {"Rows",8}");
+    Console.WriteLine(new string('-', 40));
+    foreach (var tbl in tables)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"SELECT COUNT(*) FROM [{tbl}]";
+        var count = cmd.ExecuteScalar();
+        Console.WriteLine($"{tbl,-30} {count,8}");
+    }
+
+    // AppSettings contents
+    Console.WriteLine("\n--- AppSettings 内容 ---");
+    using (var cmd = conn.CreateCommand())
+    {
+        cmd.CommandText = "SELECT SettingKey, SettingValue FROM AppSettings ORDER BY SettingKey";
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+            Console.WriteLine($"  {reader.GetString(0)} = {reader.GetString(1)}");
     }
 
     return 0;

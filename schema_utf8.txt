@@ -1,0 +1,214 @@
+﻿D:\Projects\Personal\toolbox\tools\dbinspect\dbinspect.csproj : warning NU1603: dbinspect 渚濊禆浜?Microsoft.Data.Sqlite (>= 6.1.15)锛屼絾娌℃湁鎵惧埌 Microsoft.Data.Sqlite 6.1.15銆傚凡鏀逛负瑙ｆ瀽 Microsoft.Data.Sqlite 7.0.0銆?
+D:\Projects\Personal\toolbox\tools\dbinspect\dbinspect.csproj : warning NU1603: dbinspect 渚濊禆浜?Microsoft.Data.Sqlite (>= 6.1.15)锛屼絾娌℃湁鎵惧埌 Microsoft.Data.Sqlite 6.1.15銆傚凡鏀逛负瑙ｆ瀽 Microsoft.Data.Sqlite 7.0.0銆?
+Inspecting DB: C:\Users\housei\AppData\Local\ToolBox\snippets.db
+
+TABLE: AppSettings
+CREATE TABLE AppSettings (
+                    Key TEXT PRIMARY KEY,
+                    Value TEXT NOT NULL
+                )
+------------------------------------------------------------
+TABLE: FavoritePorts
+CREATE TABLE FavoritePorts (
+                    Port INTEGER PRIMARY KEY
+                )
+------------------------------------------------------------
+TABLE: FavoriteServices
+CREATE TABLE FavoriteServices (
+                    ServiceName TEXT PRIMARY KEY
+                )
+------------------------------------------------------------
+TABLE: Folders
+CREATE TABLE Folders (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Name TEXT NOT NULL,
+                    ParentId INTEGER NOT NULL DEFAULT 0,
+                    SortOrder INTEGER NOT NULL DEFAULT 0
+                )
+------------------------------------------------------------
+TABLE: ReminderTriggerLogs
+CREATE TABLE ReminderTriggerLogs (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ReminderId INTEGER NOT NULL,
+                    TriggeredAt TEXT NOT NULL,
+                    Status TEXT NOT NULL DEFAULT 'Success',
+                    ScriptExecutionLogId INTEGER NULL,
+                    FOREIGN KEY (ReminderId) REFERENCES Reminders(Id) ON DELETE CASCADE
+                )
+------------------------------------------------------------
+TABLE: Reminders
+CREATE TABLE Reminders (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Category TEXT NOT NULL DEFAULT '鑷畾涔?,
+                    Title TEXT NOT NULL,
+                    Message TEXT NOT NULL DEFAULT '',
+                    TimeText TEXT NOT NULL,
+                    RecurrenceType TEXT NOT NULL DEFAULT '鍗曟',
+                    IntervalMinutes INTEGER NOT NULL DEFAULT 0,
+                    DayOfMonth INTEGER NOT NULL DEFAULT 1,
+                    IsEnabled INTEGER NOT NULL DEFAULT 1,
+                    LastTriggeredAt TEXT NULL,
+                    CreatedAt TEXT NOT NULL,
+                    UpdatedAt TEXT NOT NULL
+                , ActionType TEXT NOT NULL DEFAULT '閫氱煡鎻愰啋', ScriptId INTEGER NULL, ScriptParameters TEXT NOT NULL DEFAULT '', DateText TEXT NOT NULL DEFAULT '')
+------------------------------------------------------------
+TABLE: ScriptExecutionLogs
+CREATE TABLE ScriptExecutionLogs (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ScriptId INTEGER NOT NULL,
+                    ReminderId INTEGER NULL,
+                    Source TEXT NOT NULL DEFAULT 'Manual',
+                    Status TEXT NOT NULL DEFAULT 'Running',
+                    ExitCode INTEGER NULL,
+                    StartedAt TEXT NOT NULL,
+                    FinishedAt TEXT NULL,
+                    DurationMs INTEGER NULL,
+                    CommandPreview TEXT NOT NULL DEFAULT '',
+                    WorkingDirectory TEXT NOT NULL DEFAULT '',
+                    ParameterSnapshotJson TEXT NOT NULL DEFAULT '',
+                    StandardOutput TEXT NOT NULL DEFAULT '',
+                    StandardError TEXT NOT NULL DEFAULT '',
+                    Message TEXT NOT NULL DEFAULT '',
+                    CreatedAt TEXT NOT NULL,
+                    ArchivedAt TEXT NULL,
+                    FOREIGN KEY (ScriptId) REFERENCES Scripts(Id) ON DELETE CASCADE
+                )
+------------------------------------------------------------
+TABLE: ScriptParameters
+CREATE TABLE ScriptParameters (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ScriptId INTEGER NOT NULL,
+                    Name TEXT NOT NULL,
+                    DisplayName TEXT NOT NULL DEFAULT '',
+                    ControlType TEXT NOT NULL DEFAULT 'Text',
+                    ArgumentName TEXT NOT NULL DEFAULT '',
+                    DefaultValue TEXT NOT NULL DEFAULT '',
+                    Placeholder TEXT NOT NULL DEFAULT '',
+                    HelpText TEXT NOT NULL DEFAULT '',
+                    IsRequired INTEGER NOT NULL DEFAULT 0,
+                    SortOrder INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY (ScriptId) REFERENCES Scripts(Id) ON DELETE CASCADE
+                )
+------------------------------------------------------------
+TABLE: Scripts
+CREATE TABLE Scripts (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Name TEXT NOT NULL,
+                    Description TEXT NOT NULL DEFAULT '',
+                    ScriptType TEXT NOT NULL DEFAULT 'Batch',
+                    FileName TEXT NOT NULL DEFAULT '',
+                    RelativeScriptPath TEXT NOT NULL DEFAULT '',
+                    WorkingDirectory TEXT NOT NULL DEFAULT '',
+                    CustomInterpreterPath TEXT NOT NULL DEFAULT '',
+                    IsFavorite INTEGER NOT NULL DEFAULT 0,
+                    IsRunInTerminal INTEGER NOT NULL DEFAULT 0,
+                    CreatedAt TEXT NOT NULL,
+                    UpdatedAt TEXT NOT NULL
+                )
+------------------------------------------------------------
+TABLE: ServiceGroupItems
+CREATE TABLE ServiceGroupItems (
+                    GroupId INTEGER NOT NULL,
+                    ServiceName TEXT NOT NULL,
+                    PRIMARY KEY (GroupId, ServiceName),
+                    FOREIGN KEY (GroupId) REFERENCES ServiceGroups(Id) ON DELETE CASCADE
+                )
+------------------------------------------------------------
+TABLE: ServiceGroups
+CREATE TABLE ServiceGroups (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Name TEXT NOT NULL UNIQUE
+                )
+------------------------------------------------------------
+TABLE: SkillMetadata
+CREATE TABLE SkillMetadata (
+                    SkillId TEXT PRIMARY KEY,
+                    Alias TEXT NOT NULL DEFAULT '',
+                    Category TEXT NOT NULL DEFAULT '',
+                    CreatedAt TEXT NOT NULL,
+                    UpdatedAt TEXT NOT NULL
+                )
+------------------------------------------------------------
+TABLE: SnippetTags
+CREATE TABLE SnippetTags (
+                    SnippetId INTEGER NOT NULL,
+                    TagId INTEGER NOT NULL,
+                    PRIMARY KEY (SnippetId, TagId),
+                    FOREIGN KEY (SnippetId) REFERENCES Snippets(Id) ON DELETE CASCADE,
+                    FOREIGN KEY (TagId) REFERENCES Tags(Id) ON DELETE CASCADE
+                )
+------------------------------------------------------------
+TABLE: Snippets
+CREATE TABLE Snippets (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Title TEXT NOT NULL,
+                    Code TEXT NOT NULL,
+                    Language TEXT NOT NULL DEFAULT '',
+                    Description TEXT NOT NULL DEFAULT '',
+                    FolderId INTEGER NOT NULL DEFAULT 0,
+                    IsFavorite INTEGER NOT NULL DEFAULT 0,
+                    UsageCount INTEGER NOT NULL DEFAULT 0,
+                    CreatedAt TEXT NOT NULL,
+                    UpdatedAt TEXT NOT NULL
+                )
+------------------------------------------------------------
+TABLE: SshConfigPresets
+CREATE TABLE SshConfigPresets (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Name TEXT NOT NULL UNIQUE,
+                    Description TEXT NOT NULL DEFAULT '',
+                    Content TEXT NOT NULL,
+                    IsActive INTEGER NOT NULL DEFAULT 0,
+                    LastUsedAt TEXT NULL,
+                    CreatedAt TEXT NOT NULL,
+                    UpdatedAt TEXT NOT NULL
+                )
+------------------------------------------------------------
+TABLE: Tags
+CREATE TABLE Tags (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Name TEXT NOT NULL UNIQUE,
+                    Color TEXT NOT NULL DEFAULT '#0078D4'
+                )
+------------------------------------------------------------
+TABLE: sqlite_sequence
+CREATE TABLE sqlite_sequence(name,seq)
+------------------------------------------------------------
+
+Column info for key tables:
+
+Table: SshConfigPresets
+cid | name | type | notnull | dflt_value | pk
+0 | Id | INTEGER | 0 |  | 1
+1 | Name | TEXT | 1 |  | 0
+2 | Description | TEXT | 1 | '' | 0
+3 | Content | TEXT | 1 |  | 0
+4 | IsActive | INTEGER | 1 | 0 | 0
+5 | LastUsedAt | TEXT | 0 |  | 0
+6 | CreatedAt | TEXT | 1 |  | 0
+7 | UpdatedAt | TEXT | 1 |  | 0
+============================================================
+Table: Reminders
+cid | name | type | notnull | dflt_value | pk
+0 | Id | INTEGER | 0 |  | 1
+1 | Category | TEXT | 1 | '鑷畾涔? | 0
+2 | Title | TEXT | 1 |  | 0
+3 | Message | TEXT | 1 | '' | 0
+4 | TimeText | TEXT | 1 |  | 0
+5 | RecurrenceType | TEXT | 1 | '鍗曟' | 0
+6 | IntervalMinutes | INTEGER | 1 | 0 | 0
+7 | DayOfMonth | INTEGER | 1 | 1 | 0
+8 | IsEnabled | INTEGER | 1 | 1 | 0
+9 | LastTriggeredAt | TEXT | 0 |  | 0
+10 | CreatedAt | TEXT | 1 |  | 0
+11 | UpdatedAt | TEXT | 1 |  | 0
+12 | ActionType | TEXT | 1 | '閫氱煡鎻愰啋' | 0
+13 | ScriptId | INTEGER | 0 |  | 0
+14 | ScriptParameters | TEXT | 1 | '' | 0
+15 | DateText | TEXT | 1 | '' | 0
+============================================================
+Table: AppSettings
+cid | name | type | notnull | dflt_value | pk
+0 | Key | TEXT | 0 |  | 1
+1 | Value | TEXT | 1 |  | 0
+============================================================

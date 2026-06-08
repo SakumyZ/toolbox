@@ -99,15 +99,58 @@ namespace ToolBox
             // 初始化日志引擎
             LogService.Initialize();
 
+            // 执行数据库结构链式迁移
+            try
+            {
+                var appDataPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "ToolBox");
+                Directory.CreateDirectory(appDataPath);
+                var dbPath = Path.Combine(appDataPath, "snippets.db");
+                var connectionString = $"Data Source={dbPath}";
+                DatabaseMigrationService.Migrate(connectionString);
+            }
+            catch (Exception ex)
+            {
+                Log.Fatal(ex, "数据库链式迁移发生异常");
+            }
+
+            // 注册 WinUI 框架的未捕获异常
+            this.UnhandledException += (s, e) =>
+            {
+                var ex = e.Exception;
+                string extraInfo = "";
+                if (ex != null)
+                {
+                    extraInfo = $"HResult: 0x{ex.HResult:X8}\n" +
+                                $"Source: {ex.Source}\n" +
+                                $"StackTrace: {ex.StackTrace}\n" +
+                                $"InnerException: {ex.InnerException}\n";
+                    if (ex is Microsoft.UI.Xaml.Markup.XamlParseException xpe)
+                    {
+                        extraInfo += $"XamlParseException - Message: {xpe.Message}\n";
+                    }
+                }
+                
+                Log.Fatal(ex, "WinUI 未捕获异常: {Message}\n{ExtraInfo}", e.Message, extraInfo);
+                Console.Error.WriteLine($"[FATAL WINUI EXCEPTION] {e.Message}\n{extraInfo}");
+                LogService.CloseAndFlush();
+                e.Handled = true; // 设为已处理，防止 fail-fast 崩溃
+            };
+
             // 注册全局异常以便尽早记录问题
             AppDomain.CurrentDomain.UnhandledException += (s, e) =>
             {
                 var exObj = e.ExceptionObject as Exception;
                 Log.Fatal(exObj, "未捕获的全局异常: {Message}", exObj?.Message ?? "未知错误");
+                Console.Error.WriteLine($"[FATAL UNHANDLED EXCEPTION] {exObj}");
+                LogService.CloseAndFlush();
             };
             TaskScheduler.UnobservedTaskException += (s, e) =>
             {
                 Log.Fatal(e.Exception, "未观察到的 Task 异常: {Message}", e.Exception?.Message);
+                Console.Error.WriteLine($"[FATAL UNOBSERVED TASK EXCEPTION] {e.Exception}");
+                LogService.CloseAndFlush();
                 e.SetObserved();
             };
 
@@ -118,6 +161,8 @@ namespace ToolBox
             catch (Exception ex)
             {
                 Log.Fatal(ex, "InitializeComponent 崩溃");
+                Console.Error.WriteLine($"[FATAL INITIALIZE COMPONENT CRASH] {ex}");
+                LogService.CloseAndFlush();
                 throw;
             }
         }
@@ -194,6 +239,8 @@ namespace ToolBox
             catch (Exception ex)
             {
                 Log.Fatal(ex, "MainWindow 启动或依赖服务启动失败");
+                Console.Error.WriteLine($"[FATAL MAINWINDOW LAUNCH CRASH] {ex}");
+                LogService.CloseAndFlush();
                 throw;
             }
 
