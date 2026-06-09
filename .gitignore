@@ -399,3 +399,15 @@ __pycache__/
 *.btm.cs
 *.odx.cs
 *.xsd.cs
+
+# Dist directory
+dist/
+
+# MSBuild binary logs
+*.binlog
+
+# dotnet publish output
+publish/
+
+# General build output
+out/
