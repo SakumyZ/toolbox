@@ -32,7 +32,7 @@ if (Test-Path $zipPath)
     Remove-Item $zipPath -Force
 }
 
-Compress-Archive -Path (Join-Path $buildOutput "*") -DestinationPath $zipPath -Force
+7z a $zipPath (Join-Path $buildOutput "*")
 
 git push origin main
 git tag -f $normalizedVersion
