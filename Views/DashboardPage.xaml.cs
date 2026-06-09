@@ -14,6 +14,7 @@ namespace ToolBox.Views
         private const int MaxVisibleReminderRows = 5;
 
         private readonly ReminderService _reminderService = new();
+        private readonly SshConfigService _sshConfigService = new();
         private bool _isSubscribed;
 
         public DashboardPage()
@@ -72,6 +73,7 @@ namespace ToolBox.Views
             int totalFavorites = 0;
 
             CardsPanel.Children.Add(BuildReminderCard(reminders));
+            CardsPanel.Children.Add(BuildSshConfigCard());
 
             foreach (var provider in providers)
             {
@@ -160,7 +162,169 @@ namespace ToolBox.Views
                 CardsPanel.Children.Add(card);
             }
 
-            SummaryText.Text = $"运行中定时器 {enabledReminderCount} 个，收藏模块 {providers.Count} 个，收藏 {totalFavorites} 项";
+            var sshPresets = _sshConfigService.GetAllPresets();
+            SummaryText.Text = $"运行中定时器 {enabledReminderCount} 个，SSH 预设 {sshPresets.Count} 个，收藏模块 {providers.Count} 个，收藏 {totalFavorites} 项";
+        }
+
+        /**
+         * 构建 SSH Config 预设卡片。
+         * @returns {UIElement} 返回构建好的卡片控件。
+         */
+        private UIElement BuildSshConfigCard()
+        {
+            var presets = _sshConfigService.GetAllPresets();
+            var card = new Border
+            {
+                Background = (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"],
+                BorderBrush = (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"],
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(16)
+            };
+
+            var content = new StackPanel { Spacing = 10 };
+
+            // 构建卡片头部
+            var titleRow = new Grid
+            {
+                ColumnDefinitions =
+                {
+                    new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) },
+                    new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+                    new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) }
+                }
+            };
+
+            var icon = new FontIcon
+            {
+                Glyph = "\xE128",
+                FontSize = 16,
+                Foreground = (Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"]
+            };
+            Grid.SetColumn(icon, 0);
+            titleRow.Children.Add(icon);
+
+            var titleText = new TextBlock
+            {
+                Text = "SSH Config 预设",
+                Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(10, 0, 0, 0)
+            };
+            Grid.SetColumn(titleText, 1);
+            titleRow.Children.Add(titleText);
+
+            var countBadge = new TextBlock
+            {
+                Text = $"共 {presets.Count} 个预设",
+                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(countBadge, 2);
+            titleRow.Children.Add(countBadge);
+
+            content.Children.Add(titleRow);
+
+            if (presets.Count == 0)
+            {
+                // 分支：没有 SSH 预设，显示提示
+                content.Children.Add(new TextBlock
+                {
+                    Text = "暂无 SSH Config 预设，请到管理界面导入或新建",
+                    Foreground = (Brush)Application.Current.Resources["TextFillColorTertiaryBrush"],
+                    FontSize = 12
+                });
+            }
+            else
+            {
+                // 分支：存在 SSH 预设，使用横向 Radio Group 渲染
+                var radioGroupPanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 24 };
+
+                foreach (var preset in presets)
+                {
+                    var rb = new RadioButton
+                    {
+                        GroupName = "SshConfigPresetsGroup",
+                        IsChecked = preset.IsActive,
+                        Tag = preset.Id,
+                        Margin = new Thickness(0, 0, 8, 0)
+                    };
+
+                    var rbContent = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                    rbContent.Children.Add(new TextBlock
+                    {
+                        Text = preset.Name,
+                        FontWeight = preset.IsActive ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal
+                    });
+
+                    if (!string.IsNullOrEmpty(preset.Description))
+                    {
+                        // 分支：预设带有说明，展示说明
+                        rbContent.Children.Add(new TextBlock
+                        {
+                            Text = $"- {preset.Description}",
+                            Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                            FontSize = 12,
+                            VerticalAlignment = VerticalAlignment.Center
+                        });
+                    }
+
+                    rb.Content = rbContent;
+                    rb.Click += SshPreset_Click;
+                    radioGroupPanel.Children.Add(rb);
+                }
+
+                content.Children.Add(radioGroupPanel);
+            }
+
+            var manageButton = new HyperlinkButton
+            {
+                Content = "管理 SSH 配置 →",
+                Tag = "SshConfig",
+                Margin = new Thickness(0, 4, 0, 0)
+            };
+            manageButton.Click += ViewAll_Click;
+            content.Children.Add(manageButton);
+
+            card.Child = content;
+            return card;
+        }
+
+        /**
+         * 处理 SSH 预设被选中的事件。
+         * @param {object} sender 事件发送者。
+         * @param {RoutedEventArgs} e 事件参数。
+         */
+        private async void SshPreset_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is RadioButton rb && rb.Tag is long presetId)
+            {
+                // 分支：确认点击的是有效 RadioButton
+                if (rb.IsChecked == true)
+                {
+                    // 分支：RadioButton 处于 Checked 状态，进行激活操作
+                    var result = _sshConfigService.ActivatePreset(presetId);
+                    
+                    if (result.success)
+                    {
+                        // 分支：切换成功，重新加载 Dashboard 以更新高亮状态
+                        await LoadCardsAsync();
+                    }
+                    else
+                    {
+                        // 分支：切换失败，向用户弹出错误对话框，并重新加载以还原正确的 Checked 状态
+                        var dialog = new ContentDialog
+                        {
+                            Title = "切换失败",
+                            Content = result.message,
+                            CloseButtonText = "确定",
+                            XamlRoot = this.XamlRoot
+                        };
+                        await dialog.ShowAsync();
+                        await LoadCardsAsync();
+                    }
+                }
+            }
         }
 
         private UIElement BuildReminderCard(System.Collections.Generic.IReadOnlyList<Reminder> reminders)

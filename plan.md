@@ -346,6 +346,8 @@
 - [x] Dashboard 收藏项以三列小卡片网格展示，端口收藏等摘要内容更紧凑
 - [x] 支持在 Dashboard 对运行中的定时器快捷关闭
 - [x] Dashboard 保留“管理全部定时器”跳转入口，编辑仍放在定时器管理页集中处理
+- [x] Dashboard 新增 SSH Config 预设快捷管理卡片，展示预设总数并以 Radio Group 形式提供快捷切换与激活
+- [x] Dashboard 新增 SSH 预设卡片底部的快捷跳转管理按钮
 
 ---
 
