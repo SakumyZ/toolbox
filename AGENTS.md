@@ -2,6 +2,10 @@
 
 This is a WinUI 3 desktop application built with .NET 8. This document outlines the build processes, code style guidelines, and conventions that all AI agents must follow when modifying this codebase.
 
+## Local Operations
+
+The file `/docs/local.md` contains the user's private flow. Please read it first and execute it at the appropriate time.
+
 ## 1. Environment & Build
 
 ### Project Structure
@@ -89,7 +93,7 @@ When implementing features or fixing bugs:
    - Fix any build errors or warnings immediately.
    - Ensure no regressions in existing code style.
 4. **Document**:
-   - Update the `plan.md` file to reflect the latest implementation status after completing the work.
+   - Update the `docs/plan.md` file to reflect the latest implementation status after completing the work.
 
 ## 5. Dependencies
 
@@ -102,4 +106,4 @@ Do not remove these packages unless explicitly instructed.
 
 ## 6. Release Process
 
-If the user needs to perform a release, they should refer to [RELEASE.md](file:///d:/Projects/Personal/toolbox/RELEASE.md) for detailed instructions and guidelines.
+If the user needs to perform a release, they should refer to [RELEASE.md](/docs/RELEASE.md) for detailed instructions and guidelines.

@@ -411,3 +411,6 @@ publish/
 
 # General build output
 out/
+
+# Private local documentation
+docs/local.md
