@@ -28,6 +28,7 @@ namespace ToolBox.Views
         public QuickAddWindow()
         {
             InitializeComponent();
+            App.SetWindowIcon(this);
 
             _allTags = _db.GetAllTags();
 

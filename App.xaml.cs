@@ -28,6 +28,35 @@ namespace ToolBox
         public static Window? MainWindowInstance { get; private set; }
 
         /// <summary>
+        /// 设置窗口图标为 app.ico
+        /// </summary>
+        /// <param name="window">要设置图标的窗口对象</param>
+        public static void SetWindowIcon(Window window)
+        {
+            try
+            {
+                var hWnd = WindowNative.GetWindowHandle(window);
+                var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hWnd);
+                var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
+
+                string iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
+                if (File.Exists(iconPath))
+                {
+                    appWindow.SetIcon(iconPath);
+                    Log.Information("成功为窗口 {WindowTitle} 设置图标。", window.Content?.GetType().Name ?? "Window");
+                }
+                else
+                {
+                    Log.Warning("未找到窗口图标文件: {IconPath}", iconPath);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "设置窗口图标时发生异常");
+            }
+        }
+
+        /// <summary>
         /// 将指定窗口拉到前台并恢复（如果最小化）。
         /// </summary>
         public static void BringWindowToFront(IntPtr hWnd)

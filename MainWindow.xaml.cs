@@ -20,6 +20,7 @@ namespace ToolBox
             try
             {
                 InitializeComponent();
+                App.SetWindowIcon(this);
                 ExtendsContentIntoTitleBar = true;
                 RegisterHotkeys();
                 // 捕获 Frame 导航失败以记录异常（用于定位 Settings 点击崩溃）

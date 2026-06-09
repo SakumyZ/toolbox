@@ -46,6 +46,7 @@ namespace ToolBox.Views
         public NotificationWindow(NotificationVisual visual)
         {
             InitializeComponent();
+            App.SetWindowIcon(this);
 
             ExtendsContentIntoTitleBar = true;
             ConfigureWindow();

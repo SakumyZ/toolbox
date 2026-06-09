@@ -21,6 +21,7 @@ namespace ToolBox.Views
         public QuickSearchWindow()
         {
             InitializeComponent();
+            App.SetWindowIcon(this);
 
             // 设置窗口大小
             var appWindow = this.AppWindow;

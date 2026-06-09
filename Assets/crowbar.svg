@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <!-- Smooth black background gradient (deep black to dark charcoal) -->
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1A1A1A"/>
+      <stop offset="100%" stop-color="#050505"/>
+    </linearGradient>
+
+    <!-- Silver/Metallic Gradient for high contrast -->
+    <linearGradient id="silverGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="40%" stop-color="#ECEFF1"/>
+      <stop offset="100%" stop-color="#CFD8DC"/>
+    </linearGradient>
+
+    <!-- Glass Outline Gradient -->
+    <linearGradient id="glassOutlineGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.3"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background squircle (like X logo style) -->
+  <rect x="6" y="6" width="88" height="88" rx="22" ry="22" fill="url(#bgGrad)" stroke="#37474F" stroke-width="1.5"/>
+
+  <!-- Glass Sheath Outline (white outline for contrast) -->
+  <path d="M 28,72 L 63,37 C 71,29 68,17 56,19 C 50,20 48,27 50,30" fill="none" stroke="url(#glassOutlineGrad)" stroke-width="11" stroke-linecap="round" opacity="0.85"/>
+
+  <!-- Glass Sheath Body -->
+  <path d="M 28,72 L 63,37 C 71,29 68,17 56,19 C 50,20 48,27 50,30" fill="none" stroke="url(#silverGrad)" stroke-width="9.5" stroke-linecap="round" opacity="0.15"/>
+
+  <!-- Metal Core (pure high contrast white/silver) -->
+  <path d="M 28,72 L 63,37 C 71,29 68,17 56,19 C 50,20 48,27 50,30" fill="none" stroke="url(#silverGrad)" stroke-width="5" stroke-linecap="round"/>
+
+  <!-- Highlights / Glass shine -->
+  <path d="M 30,70 L 60,40" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" opacity="0.95"/>
+  <circle cx="32" cy="68" r="1.5" fill="#FFFFFF" opacity="0.95"/>
+  <path d="M 62,38 C 67,33 65,22 57,23" fill="none" stroke="#FFFFFF" stroke-width="1.2" stroke-linecap="round" opacity="0.65"/>
+</svg>
