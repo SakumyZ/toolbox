@@ -38,8 +38,13 @@ git push origin main
 git tag -f $normalizedVersion
 git push origin $normalizedVersion --force
 
+$oldEAP = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
 $existingRelease = gh release view $normalizedVersion --repo $Repository 2>$null
-if ($LASTEXITCODE -eq 0)
+$exitCode = $LASTEXITCODE
+$ErrorActionPreference = $oldEAP
+
+if ($exitCode -eq 0)
 {
     gh release upload $normalizedVersion $zipPath --repo $Repository --clobber
 }
