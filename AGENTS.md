@@ -1,6 +1,6 @@
 # ToolBox - Agent Instructions
 
-This repository contains the source code for **ToolBox**, a WinUI 3 desktop application built with .NET 8. This document outlines the build processes, code style guidelines, and conventions that all AI agents must follow when modifying this codebase.
+This is a WinUI 3 desktop application built with .NET 8. This document outlines the build processes, code style guidelines, and conventions that all AI agents must follow when modifying this codebase.
 
 ## 1. Environment & Build
 
@@ -52,76 +52,8 @@ If asked to add tests:
 
 Follow the existing patterns found in `.cs` and `.xaml` files.
 
-### General Formatting
-
-- **Indentation**: 4 spaces.
-- **Braces**: Allman style (opening braces on a new line).
-
-  ```csharp
-  // Correct
-  public void Method()
-  {
-      // ...
-  }
-
-  // Incorrect
-  public void Method() {
-      // ...
-  }
-  ```
-
-- **Line Length**: Aim for < 120 characters, but do not aggressively wrap lines if it hurts readability.
-
-### Naming Conventions
-
-- **Classes, Methods, Properties, Events**: PascalCase.
-  - `public class MainWindow`
-  - `public void InitializeComponent()`
-  - `public int ItemCount { get; set; }`
-- **Private Fields**: \_camelCase (underscore prefix).
-  - `private Window? _window;`
-  - `private readonly List<string> _items;`
-- **Parameters & Local Variables**: camelCase.
-  - `public void AddItem(string itemName)`
-- **Event Handlers**: `Object_EventName` (e.g., `Button_Click`).
-
-### Type Safety & Nullability
-
-- **Nullable Reference Types**: **ENABLED**.
-  - The project uses `<Nullable>enable</Nullable>`.
-  - Explicitly mark nullable types: `string?`, `Window?`.
-  - Check for nulls before accessing members of nullable types.
-  - Use pattern matching where appropriate: `if (obj is string s) { ... }`.
-
-### Namespaces & Imports
-
-- **Namespace Style**: Block-scoped (Standard C# style).
-  ```csharp
-  namespace ToolBox
-  {
-      public class MyClass { ... }
-  }
-  ```
-- **Using Directives Order**:
-  1. `System.*` namespaces.
-  2. `Microsoft.UI.Xaml.*` namespaces.
-  3. `Windows.*` namespaces.
-  4. Project-specific namespaces.
-  5. Alias directives (e.g., `using WinRect = Windows.Foundation.Rect;`).
-
-### Comments & Documentation
-
-- **XML Documentation**: Use `///` for all public classes, methods, and complex logic.
-  ```csharp
-  /// <summary>
-  /// Initializes the singleton application object.
-  /// </summary>
-  public App()
-  {
-      InitializeComponent();
-  }
-  ```
-- **Inline Comments**: Use `//` for explanations of complex code blocks. Avoid obvious comments.
+- **Style Consistency**: Always align with the style, naming conventions, and layouts of the surrounding code. Do not introduce formatting styles that deviate from the existing files.
+- **Type Safety & Nullability**: **ENABLED** (`<Nullable>enable</Nullable>`). Respect nullability constraints, mark nullable reference types explicitly (e.g., `string?`), and perform proper null-checks.
 
 ## 3. Architecture & Patterns
 
@@ -156,6 +88,8 @@ When implementing features or fixing bugs:
    - Run `dotnet build` after every significant change.
    - Fix any build errors or warnings immediately.
    - Ensure no regressions in existing code style.
+4. **Document**:
+   - Update the `plan.md` file to reflect the latest implementation status after completing the work.
 
 ## 5. Dependencies
 
@@ -166,4 +100,6 @@ Key libraries currently in use:
 
 Do not remove these packages unless explicitly instructed.
 
-实装完需求后，注意将 plan.md 的文档进行更新
+## 6. Release Process
+
+If the user needs to perform a release, they should refer to [RELEASE.md](file:///d:/Projects/Personal/toolbox/RELEASE.md) for detailed instructions and guidelines.
