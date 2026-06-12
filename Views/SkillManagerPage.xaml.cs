@@ -283,21 +283,13 @@ namespace ToolBox.Views
             EmptyCategoryText.Visibility = viewModels.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         }
 
-        private async void RenameCategory_Click(object sender, RoutedEventArgs e)
+        private async void ConfirmRenameCategory_Click(object sender, RoutedEventArgs e)
         {
             if (sender is Button btn && btn.Tag is string oldName)
             {
-                var textBox = new TextBox { Text = oldName, PlaceholderText = "新分类名称", MinWidth = 300 };
-                var renameDialog = new ContentDialog
-                {
-                    Title = "重命名分类",
-                    Content = textBox,
-                    PrimaryButtonText = "确定",
-                    CloseButtonText = "取消",
-                    XamlRoot = XamlRoot
-                };
-                
-                if (await renameDialog.ShowAsync() == ContentDialogResult.Primary)
+                var stackPanel = btn.Parent as StackPanel;
+                var textBox = stackPanel?.Children.OfType<TextBox>().FirstOrDefault();
+                if (textBox != null)
                 {
                     var newName = textBox.Text.Trim();
                     if (string.IsNullOrWhiteSpace(newName))
@@ -305,6 +297,17 @@ namespace ToolBox.Views
                         StatusMessage.Text = "分类名不能为空";
                         return;
                     }
+
+                    // Close the Flyout
+                    if (btn.Parent is FrameworkElement fe && fe.Parent is FlyoutPresenter presenter && presenter.Parent is Microsoft.UI.Xaml.Controls.Primitives.Popup popup)
+                    {
+                        popup.IsOpen = false;
+                    }
+                    else if (Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(btn) != null)
+                    {
+                         btn.ContextFlyout?.Hide();
+                    }
+
                     var result = await Task.Run(() => _service.RenameCategory(oldName, newName));
                     StatusMessage.Text = result.message;
                     if (result.success)
@@ -316,28 +319,16 @@ namespace ToolBox.Views
             }
         }
 
-        private async void DeleteCategory_Click(object sender, RoutedEventArgs e)
+        private async void ConfirmDeleteCategory_Click(object sender, RoutedEventArgs e)
         {
             if (sender is Button btn && btn.Tag is string categoryName)
             {
-                var confirmDialog = new ContentDialog
+                var result = await Task.Run(() => _service.DeleteCategory(categoryName));
+                StatusMessage.Text = result.message;
+                if (result.success)
                 {
-                    Title = "彻底删除",
-                    Content = $"确定要删除分类 '{categoryName}' 吗？相关 Skill 将被置为未分类状态。",
-                    PrimaryButtonText = "确认删除",
-                    CloseButtonText = "取消",
-                    XamlRoot = XamlRoot
-                };
-
-                if (await confirmDialog.ShowAsync() == ContentDialogResult.Primary)
-                {
-                    var result = await Task.Run(() => _service.DeleteCategory(categoryName));
-                    StatusMessage.Text = result.message;
-                    if (result.success)
-                    {
-                        await RefreshDataAsync();
-                        await RefreshCategoryListAsync();
-                    }
+                    await RefreshDataAsync();
+                    await RefreshCategoryListAsync();
                 }
             }
         }
@@ -369,28 +360,16 @@ namespace ToolBox.Views
             }
         }
 
-        private async void DeleteArchivedSkill_Click(object sender, RoutedEventArgs e)
+        private async void ConfirmDeleteArchivedSkill_Click(object sender, RoutedEventArgs e)
         {
             if (sender is Button btn && btn.Tag is string skillId)
             {
-                var confirmDialog = new ContentDialog
+                var result = await Task.Run(() => _service.DeleteSkill(skillId));
+                StatusMessage.Text = result.message;
+                if (result.success)
                 {
-                    Title = "彻底删除",
-                    Content = $"确定要彻底删除已归档的 Skill '{skillId}' 及其全部文件吗？此操作不可恢复。",
-                    PrimaryButtonText = "确认删除",
-                    CloseButtonText = "取消",
-                    XamlRoot = XamlRoot
-                };
-
-                if (await confirmDialog.ShowAsync() == ContentDialogResult.Primary)
-                {
-                    var result = await Task.Run(() => _service.DeleteSkill(skillId));
-                    StatusMessage.Text = result.message;
-                    if (result.success)
-                    {
-                        await RefreshDataAsync();
-                        await RefreshArchiveListAsync();
-                    }
+                    await RefreshDataAsync();
+                    await RefreshArchiveListAsync();
                 }
             }
         }
@@ -580,6 +559,8 @@ namespace ToolBox.Views
         /// </summary>
         private async void EditSkill_Click(object sender, RoutedEventArgs e)
         {
+            try
+            {
             if (sender is not Button button || button.Tag is not string skillId)
             {
                 return;
@@ -761,30 +742,26 @@ namespace ToolBox.Views
             };
 
             var deleteBtn = new Button { Content = "删除", Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White), Padding = new Thickness(12, 4, 12, 4), BorderThickness = new Thickness(0) };
-            deleteBtn.Resources.Add("ButtonBackground", new Microsoft.UI.Xaml.Media.SolidColorBrush(ParseColorHex("#D13438")));
-            deleteBtn.Resources.Add("ButtonBackgroundPointerOver", new Microsoft.UI.Xaml.Media.SolidColorBrush(ParseColorHex("#FF99A4")));
-            deleteBtn.Resources.Add("ButtonBackgroundPressed", new Microsoft.UI.Xaml.Media.SolidColorBrush(ParseColorHex("#C62828")));
-            deleteBtn.Click += async (s, ev) =>
+            deleteBtn.Resources["ButtonBackground"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(ParseColorHex("#D13438"));
+            deleteBtn.Resources["ButtonBackgroundPointerOver"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(ParseColorHex("#FF99A4"));
+            deleteBtn.Resources["ButtonBackgroundPressed"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(ParseColorHex("#C62828"));
+            var confirmDeleteBtn = new Button { Content = "确认删除", Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(ParseColorHex("#D13438")), Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White), BorderThickness = new Thickness(0), HorizontalAlignment = HorizontalAlignment.Right };
+            confirmDeleteBtn.Click += async (s, ev) =>
             {
-                var confirmDialog = new ContentDialog
+                dialog.Hide(); // Hide the edit dialog when confirming deletion.
+                var result = await Task.Run(() => _service.DeleteSkill(skillId));
+                StatusMessage.Text = result.message;
+                if (result.success)
                 {
-                    Title = "彻底删除",
-                    Content = $"确定要彻底删除 Skill '{skillId}' 及其全部文件吗？此操作不可恢复。",
-                    PrimaryButtonText = "确认删除",
-                    CloseButtonText = "取消",
-                    XamlRoot = XamlRoot
-                };
-                if (await confirmDialog.ShowAsync() == ContentDialogResult.Primary)
-                {
-                    dialog.Hide();
-                    var result = await Task.Run(() => _service.DeleteSkill(skillId));
-                    StatusMessage.Text = result.message;
-                    if (result.success)
-                    {
-                        await RefreshDataAsync();
-                    }
+                    await RefreshDataAsync();
                 }
             };
+            
+            var deleteFlyoutStack = new StackPanel { Spacing = 12, MinWidth = 200 };
+            deleteFlyoutStack.Children.Add(new TextBlock { Text = "确定要彻底删除吗？此操作不可恢复。", TextWrapping = TextWrapping.Wrap });
+            deleteFlyoutStack.Children.Add(confirmDeleteBtn);
+            
+            deleteBtn.Flyout = new Flyout { Content = deleteFlyoutStack };
             
             actionButtonsPanel.Children.Add(archiveBtn);
             actionButtonsPanel.Children.Add(deleteBtn);
@@ -813,6 +790,18 @@ namespace ToolBox.Views
             }
 
             await RefreshDataAsync(result.message);
+            }
+            catch (Exception ex)
+            {
+                var errorDialog = new ContentDialog
+                {
+                    Title = "Error",
+                    Content = ex.ToString(),
+                    CloseButtonText = "OK",
+                    XamlRoot = XamlRoot
+                };
+                await errorDialog.ShowAsync();
+            }
         }
         private Windows.UI.Color ParseColorHex(string hex)
         {

@@ -163,12 +163,20 @@
                                     <TextBlock Text="{Binding Category}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                 </StackPanel>
                                 <Button Grid.Column="1" Click="UnarchiveSkill_Click" Tag="{Binding SkillId}" Margin="8,0" Content="取消归档" />
-                                <Button Grid.Column="2" Click="DeleteArchivedSkill_Click" Tag="{Binding SkillId}" Content="彻底删除" Foreground="White" BorderThickness="0">
+                                <Button Grid.Column="2" Content="彻底删除" Foreground="White" BorderThickness="0">
                                     <Button.Resources>
                                         <SolidColorBrush x:Key="ButtonBackground" Color="#D13438" />
                                         <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FF99A4" />
                                         <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#C62828" />
                                     </Button.Resources>
+                                    <Button.Flyout>
+                                        <Flyout>
+                                            <StackPanel Spacing="12" MinWidth="200">
+                                                <TextBlock Text="确定要彻底删除吗？此操作不可恢复。" TextWrapping="Wrap" />
+                                                <Button Content="确认删除" Background="#D13438" Foreground="White" BorderThickness="0" Click="ConfirmDeleteArchivedSkill_Click" Tag="{Binding SkillId}" HorizontalAlignment="Right" />
+                                            </StackPanel>
+                                        </Flyout>
+                                    </Button.Flyout>
                                 </Button>
                             </Grid>
                         </DataTemplate>
@@ -186,13 +194,31 @@
                             <Grid Padding="8" ColumnDefinitions="Auto,*,Auto,Auto">
                                 <Border Grid.Column="0" Width="16" Height="16" CornerRadius="4" VerticalAlignment="Center" Margin="0,0,12,0" Background="{Binding BackgroundBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" />
                                 <TextBlock Grid.Column="1" Text="{Binding CategoryName}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                <Button Grid.Column="2" Click="RenameCategory_Click" Tag="{Binding CategoryName}" Margin="8,0" Content="重命名" />
-                                <Button Grid.Column="3" Click="DeleteCategory_Click" Tag="{Binding CategoryName}" Content="删除" Foreground="White" BorderThickness="0">
+                                <Button Grid.Column="2" Margin="8,0" Content="重命名">
+                                    <Button.Flyout>
+                                        <Flyout>
+                                            <StackPanel Spacing="12" MinWidth="250">
+                                                <TextBlock Text="重命名分类" FontWeight="SemiBold" />
+                                                <TextBox Text="{Binding CategoryName, Mode=OneWay}" PlaceholderText="新分类名称" />
+                                                <Button Content="确定" Click="ConfirmRenameCategory_Click" Tag="{Binding CategoryName}" HorizontalAlignment="Right" />
+                                            </StackPanel>
+                                        </Flyout>
+                                    </Button.Flyout>
+                                </Button>
+                                <Button Grid.Column="3" Content="删除" Foreground="White" BorderThickness="0">
                                     <Button.Resources>
                                         <SolidColorBrush x:Key="ButtonBackground" Color="#D13438" />
                                         <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FF99A4" />
                                         <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#C62828" />
                                     </Button.Resources>
+                                    <Button.Flyout>
+                                        <Flyout>
+                                            <StackPanel Spacing="12" MinWidth="200">
+                                                <TextBlock Text="确定要删除吗？相关 Skill 将置为未分类。" TextWrapping="Wrap" />
+                                                <Button Content="确认删除" Background="#D13438" Foreground="White" BorderThickness="0" Click="ConfirmDeleteCategory_Click" Tag="{Binding CategoryName}" HorizontalAlignment="Right" />
+                                            </StackPanel>
+                                        </Flyout>
+                                    </Button.Flyout>
                                 </Button>
                             </Grid>
                         </DataTemplate>
