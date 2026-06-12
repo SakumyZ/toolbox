@@ -14,5 +14,10 @@ namespace ToolBox.Models
         /// 已停用 skill 根目录。
         /// </summary>
         public string InactiveSkillsPath { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 目标 Agent 目录列表。
+        /// </summary>
+        public System.Collections.Generic.List<string> AgentDirectories { get; set; } = new();
     }
 }

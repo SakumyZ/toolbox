@@ -5,6 +5,9 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Threading.Tasks;
+using System.Collections.Generic;
+using System.Linq;
+using System.Xml.Linq;
 using Microsoft.Data.Sqlite;
 using ToolBox.Models;
 using Serilog;
@@ -44,6 +47,7 @@ namespace ToolBox.Services
         private const string WebDavPasswordKey = "webdav_password";
         private const string WebDavAutoSyncKey = "webdav_auto_sync";
         private const string WebDavDirectoryKey = "webdav_directory";
+        private const string WebDavMaxBackupCountKey = "webdav_max_backup_count";
 
         private readonly string _appDataPath;
         private readonly string _connectionString;
@@ -97,7 +101,8 @@ namespace ToolBox.Services
                     Username = GetSettingValue(connection, WebDavUsernameKey, string.Empty),
                     Password = GetSettingValue(connection, WebDavPasswordKey, string.Empty),
                     IsAutoSyncEnabled = GetSettingValue(connection, WebDavAutoSyncKey, "false") == "true",
-                    Directory = GetSettingValue(connection, WebDavDirectoryKey, string.Empty)
+                    Directory = GetSettingValue(connection, WebDavDirectoryKey, string.Empty),
+                    MaxBackupCount = int.TryParse(GetSettingValue(connection, WebDavMaxBackupCountKey, "10"), out var count) ? count : 10
                 };
             }
             catch (Exception ex)
@@ -124,6 +129,7 @@ namespace ToolBox.Services
                 SaveSettingValue(connection, WebDavPasswordKey, settings.Password);
                 SaveSettingValue(connection, WebDavAutoSyncKey, settings.IsAutoSyncEnabled ? "true" : "false");
                 SaveSettingValue(connection, WebDavDirectoryKey, settings.Directory);
+                SaveSettingValue(connection, WebDavMaxBackupCountKey, settings.MaxBackupCount.ToString());
                 Log.Information("BackupService: 已保存 WebDAV 设置");
             }
             catch (Exception ex)
@@ -354,7 +360,7 @@ namespace ToolBox.Services
         /// <summary>
         /// 手动上传备份至云端 WebDAV
         /// </summary>
-        public async Task UploadBackupToWebDavAsync(string url, string username, string password, string directory, string localZipPath)
+        public async Task UploadBackupToWebDavAsync(string url, string username, string password, string directory, string localZipPath, string remoteFileName)
         {
             Log.Information("BackupService: 正在将备份上传至 WebDAV...");
             using var client = GetWebDavClient(username, password);
@@ -374,7 +380,7 @@ namespace ToolBox.Services
 
             // 2. 上传备份文件
             var targetUrl = GetFullWebDavUrl(url, directory);
-            var fileUrl = targetUrl + "toolbox_backup.zip";
+            var fileUrl = targetUrl + remoteFileName;
             using var fileStream = File.OpenRead(localZipPath);
             using var content = new StreamContent(fileStream);
             content.Headers.ContentType = new MediaTypeHeaderValue("application/zip");
@@ -384,23 +390,23 @@ namespace ToolBox.Services
             {
                 throw new Exception($"上传备份到 WebDAV 失败，服务器返回状态码: {response.StatusCode}");
             }
-            Log.Information("BackupService: 上传备份到 WebDAV 完成");
+            Log.Information("BackupService: 上传备份到 WebDAV 完成，文件名: {FileName}", remoteFileName);
         }
 
         /// <summary>
         /// 手动从云端 WebDAV 下载备份
         /// </summary>
-        public async Task DownloadBackupFromWebDavAsync(string url, string username, string password, string directory, string localZipPath)
+        public async Task DownloadBackupFromWebDavAsync(string url, string username, string password, string directory, string remoteFileName, string localZipPath)
         {
             Log.Information("BackupService: 正在从 WebDAV 下载备份...");
             using var client = GetWebDavClient(username, password);
             var targetUrl = GetFullWebDavUrl(url, directory);
-            var fileUrl = targetUrl + "toolbox_backup.zip";
+            var fileUrl = targetUrl + remoteFileName;
 
             var response = await client.GetAsync(fileUrl);
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
-                throw new FileNotFoundException("云端未找到备份文件 toolbox_backup.zip");
+                throw new FileNotFoundException($"云端未找到备份文件 {remoteFileName}");
             }
             if (!response.IsSuccessStatusCode)
             {
@@ -415,26 +421,21 @@ namespace ToolBox.Services
 
             using var fileStream = File.Create(localZipPath);
             await response.Content.CopyToAsync(fileStream);
-            Log.Information("BackupService: 从 WebDAV 下载备份完成");
+            Log.Information("BackupService: 从 WebDAV 下载备份完成，文件名: {FileName}", remoteFileName);
         }
 
         /// <summary>
-        /// 获取云端备份文件的最近修改时间
+        /// 获取云端备份文件的最近修改时间（获取最新一个备份的时间）
         /// </summary>
         public async Task<DateTime?> GetRemoteBackupLastModifiedAsync(string url, string username, string password, string directory = "")
         {
-            using var client = GetWebDavClient(username, password);
-            var targetUrl = GetFullWebDavUrl(url, directory);
-            var fileUrl = targetUrl + "toolbox_backup.zip";
-
             try
             {
-                // 发送 HEAD 请求获取 HTTP 头部信息
-                var request = new HttpRequestMessage(HttpMethod.Head, fileUrl);
-                var response = await client.SendAsync(request);
-                if (response.IsSuccessStatusCode && response.Content.Headers.LastModified.HasValue)
+                var files = await GetRemoteBackupFilesAsync(url, username, password, directory);
+                if (files.Count > 0)
                 {
-                    return response.Content.Headers.LastModified.Value.LocalDateTime;
+                    // files 已经从新到旧排过序了，所以第一个就是最新的
+                    return files[0].LastModified;
                 }
             }
             catch (Exception ex)
@@ -442,6 +443,171 @@ namespace ToolBox.Services
                 Log.Warning(ex, "BackupService: 获取 WebDAV 远程备份最近修改时间失败");
             }
             return null;
+        }
+
+        /// <summary>
+        /// 获取 WebDAV 服务器上的所有备份文件列表
+        /// </summary>
+        public async Task<List<WebDavBackupItem>> GetRemoteBackupFilesAsync(string url, string username, string password, string directory = "")
+        {
+            var targetUrl = GetFullWebDavUrl(url, directory);
+            using var client = GetWebDavClient(username, password);
+            
+            try
+            {
+                var request = new HttpRequestMessage(new HttpMethod("PROPFIND"), targetUrl);
+                request.Headers.Add("Depth", "1");
+                
+                var response = await client.SendAsync(request);
+                if (!response.IsSuccessStatusCode)
+                {
+                    Log.Warning("BackupService: 获取远程备份文件列表失败，状态码: {StatusCode}", response.StatusCode);
+                    return new List<WebDavBackupItem>();
+                }
+                
+                var xmlContent = await response.Content.ReadAsStringAsync();
+                return ParsePropFindResponse(xmlContent, targetUrl);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "BackupService: 获取远程备份列表时发生异常");
+                return new List<WebDavBackupItem>();
+            }
+        }
+
+        /// <summary>
+        /// 解析 PROPFIND 的 XML 响应
+        /// </summary>
+        private List<WebDavBackupItem> ParsePropFindResponse(string xmlContent, string targetUrl)
+        {
+            var list = new List<WebDavBackupItem>();
+            try
+            {
+                var doc = XDocument.Parse(xmlContent);
+                var responses = doc.Descendants().Where(e => e.Name.LocalName.Equals("response", StringComparison.OrdinalIgnoreCase));
+                
+                foreach (var resp in responses)
+                {
+                    var href = resp.Descendants().FirstOrDefault(e => e.Name.LocalName.Equals("href", StringComparison.OrdinalIgnoreCase))?.Value;
+                    if (string.IsNullOrWhiteSpace(href)) continue;
+                    
+                    href = Uri.UnescapeDataString(href);
+                    var fileName = Path.GetFileName(href);
+                    if (string.IsNullOrWhiteSpace(fileName)) continue;
+                    
+                    // 仅匹配符合格式的备份包
+                    if (!System.Text.RegularExpressions.Regex.IsMatch(fileName, @"^toolbox_backup_\d{14}\.zip$", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                    {
+                        continue;
+                    }
+                    
+                    var prop = resp.Descendants().FirstOrDefault(e => e.Name.LocalName.Equals("prop", StringComparison.OrdinalIgnoreCase));
+                    if (prop == null) continue;
+                    
+                    var isCollection = prop.Descendants().Any(e => e.Name.LocalName.Equals("collection", StringComparison.OrdinalIgnoreCase));
+                    if (isCollection) continue;
+                    
+                    var lastModifiedStr = prop.Descendants().FirstOrDefault(e => e.Name.LocalName.Equals("getlastmodified", StringComparison.OrdinalIgnoreCase))?.Value;
+                    var contentLengthStr = prop.Descendants().FirstOrDefault(e => e.Name.LocalName.Equals("getcontentlength", StringComparison.OrdinalIgnoreCase))?.Value;
+                    
+                    var lastModified = DateTime.MinValue;
+                    if (!string.IsNullOrEmpty(lastModifiedStr) && DateTime.TryParse(lastModifiedStr, out var parsedDate))
+                    {
+                        lastModified = parsedDate.ToLocalTime();
+                    }
+                    else
+                    {
+                        // 退回从文件名提取时间戳
+                        var timePart = fileName.Substring("toolbox_backup_".Length, 14);
+                        if (DateTime.TryParseExact(timePart, "yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var fileTime))
+                        {
+                            lastModified = fileTime;
+                        }
+                    }
+                    
+                    long size = 0;
+                    if (!string.IsNullOrEmpty(contentLengthStr))
+                    {
+                        long.TryParse(contentLengthStr, out size);
+                    }
+                    
+                    string fileUrl;
+                    if (href.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                    {
+                        fileUrl = href;
+                    }
+                    else
+                    {
+                        var baseUri = targetUrl.TrimEnd('/') + "/";
+                        fileUrl = baseUri + fileName;
+                    }
+                    
+                    list.Add(new WebDavBackupItem
+                    {
+                        FileName = fileName,
+                        FileUrl = fileUrl,
+                        LastModified = lastModified,
+                        Size = size
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "BackupService: 解析 PROPFIND 响应 XML 失败");
+            }
+            
+            // 排序：从新到旧
+            list.Sort((a, b) => b.LastModified.CompareTo(a.LastModified));
+            return list;
+        }
+
+        /// <summary>
+        /// 删除 WebDAV 上的指定备份文件
+        /// </summary>
+        public async Task DeleteRemoteFileAsync(string url, string username, string password, string directory, string fileName)
+        {
+            var targetUrl = GetFullWebDavUrl(url, directory);
+            var fileUrl = targetUrl + fileName;
+            using var client = GetWebDavClient(username, password);
+            
+            Log.Information("BackupService: 正在从 WebDAV 删除文件 {FileName}...", fileName);
+            var response = await client.DeleteAsync(fileUrl);
+            if (!response.IsSuccessStatusCode)
+            {
+                Log.Warning("BackupService: 删除 WebDAV 远程文件失败，文件名: {FileName}，状态码: {StatusCode}", fileName, response.StatusCode);
+            }
+            else
+            {
+                Log.Information("BackupService: 成功删除 WebDAV 远程文件 {FileName}", fileName);
+            }
+        }
+
+        /// <summary>
+        /// 根据上限数量清理超额的旧备份
+        /// </summary>
+        public async Task CleanOldBackupsAsync(string url, string username, string password, string directory, int maxCount)
+        {
+            if (maxCount <= 0) return;
+            
+            try
+            {
+                var files = await GetRemoteBackupFilesAsync(url, username, password, directory);
+                if (files.Count > maxCount)
+                {
+                    // files 已经按修改时间从新到旧排序了，超出部分是需要删除的
+                    var filesToDelete = files.Skip(maxCount).ToList();
+                    Log.Information("BackupService: 发现云端备份数 ({Count}) 超过限制 ({Max})，将删除 {DeleteCount} 个旧备份", files.Count, maxCount, filesToDelete.Count);
+                    
+                    foreach (var file in filesToDelete)
+                    {
+                        await DeleteRemoteFileAsync(url, username, password, directory, file.FileName);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "BackupService: 清理云端老备份发生异常");
+            }
         }
 
         /// <summary>
@@ -457,38 +623,50 @@ namespace ToolBox.Services
             }
 
             var localTime = File.GetLastWriteTime(activeDbPath);
-            var remoteTime = await GetRemoteBackupLastModifiedAsync(url, username, password, directory);
+            
+            // 获取云端文件列表
+            var remoteFiles = await GetRemoteBackupFilesAsync(url, username, password, directory);
+            var settings = GetWebDavSettings();
+            var maxCount = settings.MaxBackupCount;
 
             var tempZipPath = Path.Combine(_appDataPath, "TempSyncBackup.zip");
 
             try
             {
-                if (remoteTime == null)
+                if (remoteFiles.Count == 0)
                 {
                     Log.Information("BackupService: 云端无备份文件，开始上传本地配置...");
                     CreateBackupZip(tempZipPath);
-                    await UploadBackupToWebDavAsync(url, username, password, directory, tempZipPath);
+                    var remoteFileName = $"toolbox_backup_{DateTime.Now:yyyyMMddHHmmss}.zip";
+                    await UploadBackupToWebDavAsync(url, username, password, directory, tempZipPath, remoteFileName);
+                    await CleanOldBackupsAsync(url, username, password, directory, maxCount);
                     return (SyncResult.Uploaded, "云端无备份，已成功将本地配置备份至云端。");
                 }
 
+                // 取最新一个
+                var latestRemote = remoteFiles[0];
+                var remoteTime = latestRemote.LastModified;
+
                 // 允许 2 秒的误差窗口（由于文件系统时间戳存储精度差异）
-                if (localTime > remoteTime.Value.AddSeconds(2))
+                if (localTime > remoteTime.AddSeconds(2))
                 {
-                    Log.Information("BackupService: 本地配置较新 ({LocalTime}) > 远程配置 ({RemoteTime})，上传本地配置...", localTime, remoteTime.Value);
+                    Log.Information("BackupService: 本地配置较新 ({LocalTime}) > 远程配置 ({RemoteTime})，上传本地配置...", localTime, remoteTime);
                     CreateBackupZip(tempZipPath);
-                    await UploadBackupToWebDavAsync(url, username, password, directory, tempZipPath);
-                    return (SyncResult.Uploaded, $"本地配置较新（本地: {localTime:yyyy-MM-dd HH:mm:ss}，云端: {remoteTime.Value:yyyy-MM-dd HH:mm:ss}），已更新云端备份。");
+                    var remoteFileName = $"toolbox_backup_{DateTime.Now:yyyyMMddHHmmss}.zip";
+                    await UploadBackupToWebDavAsync(url, username, password, directory, tempZipPath, remoteFileName);
+                    await CleanOldBackupsAsync(url, username, password, directory, maxCount);
+                    return (SyncResult.Uploaded, $"本地配置较新（本地: {localTime:yyyy-MM-dd HH:mm:ss}，云端: {remoteTime:yyyy-MM-dd HH:mm:ss}），已更新云端备份。");
                 }
-                else if (remoteTime.Value > localTime.AddSeconds(2))
+                else if (remoteTime > localTime.AddSeconds(2))
                 {
-                    Log.Information("BackupService: 云端配置较新 ({RemoteTime}) > 本地配置 ({LocalTime})，拉取并恢复...", remoteTime.Value, localTime);
-                    await DownloadBackupFromWebDavAsync(url, username, password, directory, tempZipPath);
+                    Log.Information("BackupService: 云端配置较新 ({RemoteTime}) > 本地配置 ({LocalTime})，拉取并恢复...", remoteTime, localTime);
+                    await DownloadBackupFromWebDavAsync(url, username, password, directory, latestRemote.FileName, tempZipPath);
                     RestoreFromZip(tempZipPath);
-                    return (SyncResult.Downloaded, $"云端配置较新（云端: {remoteTime.Value:yyyy-MM-dd HH:mm:ss}，本地: {localTime:yyyy-MM-dd HH:mm:ss}），已从云端拉取最新配置恢复。应用即将重启以应用更改。");
+                    return (SyncResult.Downloaded, $"云端配置较新（云端: {remoteTime:yyyy-MM-dd HH:mm:ss}，本地: {localTime:yyyy-MM-dd HH:mm:ss}），已从云端拉取最新配置恢复。应用即将重启以应用更改。");
                 }
                 else
                 {
-                    Log.Information("BackupService: 本地配置与云端时间戳一致 ({LocalTime})，无须同步", localTime);
+                    Log.Information("BackupService: 本地配置与云端最新备份时间戳一致 ({LocalTime})，无须同步", localTime);
                     return (SyncResult.AlreadySynced, "本地配置与云端已是最新同步状态，无须重复操作。");
                 }
             }

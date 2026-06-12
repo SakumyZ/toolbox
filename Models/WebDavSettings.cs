@@ -29,5 +29,10 @@ namespace ToolBox.Models
         /// 备份目录 (可选)
         /// </summary>
         public string Directory { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 最多保留备份数
+        /// </summary>
+        public int MaxBackupCount { get; set; } = 10;
     }
 }

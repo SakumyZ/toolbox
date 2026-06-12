@@ -353,6 +353,7 @@ namespace ToolBox.Views
                 WebDavPasswordBox.Password = webdav.Password;
                 WebDavAutoSyncCheckBox.IsChecked = webdav.IsAutoSyncEnabled;
                 WebDavDirectoryBox.Text = webdav.Directory;
+                WebDavMaxBackupCountBox.Value = webdav.MaxBackupCount;
             }
             catch (Exception ex)
             {
@@ -371,7 +372,8 @@ namespace ToolBox.Views
                     Username = WebDavUsernameBox.Text.Trim(),
                     Password = WebDavPasswordBox.Password,
                     IsAutoSyncEnabled = WebDavAutoSyncCheckBox.IsChecked == true,
-                    Directory = WebDavDirectoryBox.Text.Trim()
+                    Directory = WebDavDirectoryBox.Text.Trim(),
+                    MaxBackupCount = double.IsNaN(WebDavMaxBackupCountBox.Value) ? 10 : (int)WebDavMaxBackupCountBox.Value
                 };
                 backupService.SaveWebDavSettings(settings);
                 ShowStatus("WebDAV 设置已保存。");
@@ -457,6 +459,7 @@ namespace ToolBox.Views
                 var username = WebDavUsernameBox.Text.Trim();
                 var password = WebDavPasswordBox.Password;
                 var directory = WebDavDirectoryBox.Text.Trim();
+                var maxCount = double.IsNaN(WebDavMaxBackupCountBox.Value) ? 10 : (int)WebDavMaxBackupCountBox.Value;
 
                 if (string.IsNullOrWhiteSpace(url))
                 {
@@ -466,7 +469,9 @@ namespace ToolBox.Views
 
                 var backupService = new BackupService();
                 backupService.CreateBackupZip(tempZip);
-                await backupService.UploadBackupToWebDavAsync(url, username, password, directory, tempZip);
+                var remoteFileName = $"toolbox_backup_{DateTime.Now:yyyyMMddHHmmss}.zip";
+                await backupService.UploadBackupToWebDavAsync(url, username, password, directory, tempZip, remoteFileName);
+                await backupService.CleanOldBackupsAsync(url, username, password, directory, maxCount);
                 SetSyncStatus("已成功将本地备份上传至 WebDAV 云端。", isError: false);
             }
             catch (Exception ex)
@@ -481,51 +486,23 @@ namespace ToolBox.Views
 
         private async void DownloadWebDav_Click(object sender, RoutedEventArgs e)
         {
-            var dialog = new ContentDialog
-            {
-                Title = "确认从云端恢复",
-                Content = "从云端下载并还原配置将覆盖本地所有现有数据（定时器、代码片段、脚本等），应用即将重启。确认恢复吗？",
-                PrimaryButtonText = "确认恢复",
-                CloseButtonText = "取消",
-                DefaultButton = ContentDialogButton.Close,
-                XamlRoot = XamlRoot
-            };
+            var url = WebDavUrlBox.Text.Trim();
+            var username = WebDavUsernameBox.Text.Trim();
+            var password = WebDavPasswordBox.Password;
+            var directory = WebDavDirectoryBox.Text.Trim();
 
-            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            if (string.IsNullOrWhiteSpace(url))
             {
+                SetSyncStatus("拉取失败：服务器地址 (URL) 不能为空。", isError: true);
                 return;
             }
 
-            SetSyncStatus("正在从云端恢复备份...", isError: false);
-            var tempZip = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ToolBox", "TempDownload.zip");
-            try
+            var dialog = new BackupDataManagerDialog(url, username, password, directory)
             {
-                var url = WebDavUrlBox.Text.Trim();
-                var username = WebDavUsernameBox.Text.Trim();
-                var password = WebDavPasswordBox.Password;
-                var directory = WebDavDirectoryBox.Text.Trim();
+                XamlRoot = XamlRoot
+            };
 
-                if (string.IsNullOrWhiteSpace(url))
-                {
-                    SetSyncStatus("拉取失败：服务器地址 (URL) 不能为空。", isError: true);
-                    return;
-                }
-
-                var backupService = new BackupService();
-                await backupService.DownloadBackupFromWebDavAsync(url, username, password, directory, tempZip);
-                backupService.RestoreFromZip(tempZip);
-                
-                SetSyncStatus("配置还原成功，正在重启应用...", isError: false);
-                ShowRestartPromptDialog();
-            }
-            catch (Exception ex)
-            {
-                SetSyncStatus($"拉取还原失败：{ex.Message}", isError: true);
-            }
-            finally
-            {
-                if (File.Exists(tempZip)) File.Delete(tempZip);
-            }
+            await dialog.ShowAsync();
         }
 
         private async void ExportBackup_Click(object sender, RoutedEventArgs e)

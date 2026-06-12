@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using ToolBox.Models;
 using Serilog;
@@ -15,10 +16,12 @@ namespace ToolBox.Services
     {
         private const string ActivePathKey = "skill_manager_active_path";
         private const string InactivePathKey = "skill_manager_inactive_path";
+        private const string AgentDirsKey = "skill_manager_agent_directories";
 
         private readonly string _connectionString;
         private readonly string _defaultActiveSkillsPath;
         private readonly string _defaultInactiveSkillsPath;
+        private readonly List<string> _defaultAgentDirectories;
 
         public SkillManagerService()
         {
@@ -33,6 +36,12 @@ namespace ToolBox.Services
             var homePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             _defaultActiveSkillsPath = Path.Combine(homePath, ".agents", "skills");
             _defaultInactiveSkillsPath = @"D:\Backup\AI\skills";
+            _defaultAgentDirectories = new List<string>
+            {
+                Path.Combine(homePath, ".claude", "skills"),
+                Path.Combine(homePath, ".openCode", "skills"),
+                Path.Combine(homePath, ".gemini", "skills")
+            };
 
             InitializeTables();
             EnsureDefaultSettings();
@@ -46,10 +55,16 @@ namespace ToolBox.Services
             using var connection = new SqliteConnection(_connectionString);
             connection.Open();
 
+            var agentDirsJson = GetSettingValue(connection, AgentDirsKey, string.Empty);
+            var agentDirs = string.IsNullOrWhiteSpace(agentDirsJson) 
+                ? _defaultAgentDirectories 
+                : JsonSerializer.Deserialize<List<string>>(agentDirsJson) ?? _defaultAgentDirectories;
+
             return new SkillManagerSettings
             {
                 ActiveSkillsPath = GetSettingValue(connection, ActivePathKey, _defaultActiveSkillsPath),
-                InactiveSkillsPath = GetSettingValue(connection, InactivePathKey, _defaultInactiveSkillsPath)
+                InactiveSkillsPath = GetSettingValue(connection, InactivePathKey, _defaultInactiveSkillsPath),
+                AgentDirectories = agentDirs
             };
         }
 
@@ -87,6 +102,9 @@ namespace ToolBox.Services
 
             SaveSettingValue(connection, ActivePathKey, normalizedActivePath);
             SaveSettingValue(connection, InactivePathKey, normalizedInactivePath);
+
+            var agentDirsJson = JsonSerializer.Serialize(settings.AgentDirectories ?? new List<string>());
+            SaveSettingValue(connection, AgentDirsKey, agentDirsJson);
 
             return (true, "目录配置已保存");
         }
@@ -190,6 +208,81 @@ namespace ToolBox.Services
                     Directory.Delete(sourcePath, recursive: true);
                 }
 
+                // 处理软链接
+                if (settings.AgentDirectories != null)
+                {
+                    foreach (var agentDir in settings.AgentDirectories)
+                    {
+                        var normalizedAgentDir = NormalizePath(agentDir);
+                        var linkPath = Path.Combine(normalizedAgentDir, skillId);
+
+                        if (isActive)
+                        {
+                            try
+                            {
+                                Directory.CreateDirectory(normalizedAgentDir);
+                                if (!Directory.Exists(linkPath) && !File.Exists(linkPath))
+                                {
+                                    Directory.CreateSymbolicLink(linkPath, targetPath);
+                                    Log.Debug("SkillManagerService: 创建软链接成功 -> '{LinkPath}' 指向 '{TargetPath}'", linkPath, targetPath);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Log.Warning(ex, "SkillManagerService: 创建软链接失败，将尝试使用 mklink /J -> '{LinkPath}' 指向 '{TargetPath}'", linkPath, targetPath);
+                                try
+                                {
+                                    var process = new System.Diagnostics.Process
+                                    {
+                                        StartInfo = new System.Diagnostics.ProcessStartInfo
+                                        {
+                                            FileName = "cmd.exe",
+                                            Arguments = $"/c mklink /J \"{linkPath}\" \"{targetPath}\"",
+                                            UseShellExecute = false,
+                                            CreateNoWindow = true
+                                        }
+                                    };
+                                    process.Start();
+                                    process.WaitForExit();
+                                    if (process.ExitCode != 0)
+                                    {
+                                        Log.Error("SkillManagerService: mklink /J 执行失败，ExitCode = {ExitCode}", process.ExitCode);
+                                    }
+                                }
+                                catch (Exception mkEx)
+                                {
+                                    Log.Error(mkEx, "SkillManagerService: 尝试 mklink /J 也失败了");
+                                }
+                            }
+                        }
+                        else
+                        {
+                            try
+                            {
+                                // Directory.Delete 可以删除目录的软链接/Junction 而不会删除源目录的内容
+                                if (Directory.Exists(linkPath))
+                                {
+                                    // 确保它是链接而不是真实的独立文件夹（以防万一）
+                                    var dirInfo = new DirectoryInfo(linkPath);
+                                    if (dirInfo.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                                    {
+                                        Directory.Delete(linkPath, recursive: false);
+                                        Log.Debug("SkillManagerService: 删除软链接成功 -> '{LinkPath}'", linkPath);
+                                    }
+                                    else
+                                    {
+                                        Log.Warning("SkillManagerService: 目标不是软链接，为了安全跳过删除 -> '{LinkPath}'", linkPath);
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Log.Error(ex, "SkillManagerService: 删除软链接失败 -> '{LinkPath}'", linkPath);
+                            }
+                        }
+                    }
+                }
+
                 Log.Information("SkillManagerService: Skill '{SkillId}' 状态切换成功 (激活 = {IsActive})", skillId, isActive);
                 return (true, isActive ? "Skill 已启用" : "Skill 已停用");
             }
@@ -270,6 +363,7 @@ namespace ToolBox.Services
 
             SaveSettingValue(connection, ActivePathKey, _defaultActiveSkillsPath, onlyIfMissing: true);
             SaveSettingValue(connection, InactivePathKey, _defaultInactiveSkillsPath, onlyIfMissing: true);
+            SaveSettingValue(connection, AgentDirsKey, JsonSerializer.Serialize(_defaultAgentDirectories), onlyIfMissing: true);
         }
 
         /// <summary>

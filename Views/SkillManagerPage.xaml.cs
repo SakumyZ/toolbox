@@ -26,6 +26,8 @@ namespace ToolBox.Views
         private bool _isRefreshing;
         private bool _isApplyingToggle;
 
+        public ObservableCollection<AgentDirItem> AgentDirsCollection { get; } = new();
+
         public SkillManagerPage()
         {
             InitializeComponent();
@@ -70,8 +72,6 @@ namespace ToolBox.Views
             try
             {
                 var settings = _service.GetSettings();
-                ActivePathBox.Text = settings.ActiveSkillsPath;
-                InactivePathBox.Text = settings.InactiveSkillsPath;
 
                 _allSkills = await Task.Run(() => _service.GetAllSkills());
                 LoadCategoryFilter();
@@ -227,24 +227,41 @@ namespace ToolBox.Views
             }
         }
 
-        /// <summary>
-        /// 保存目录配置。
-        /// </summary>
-        private async void SaveSettings_Click(object sender, RoutedEventArgs e)
+        private async void AdvancedSettings_Click(object sender, RoutedEventArgs e)
         {
-            // 如果页面正在刷新，则忽略重复点击。
-            if (_isRefreshing)
+            var settings = _service.GetSettings();
+            DialogActivePathBox.Text = settings.ActiveSkillsPath;
+            DialogInactivePathBox.Text = settings.InactiveSkillsPath;
+            
+            AgentDirsCollection.Clear();
+            if (settings.AgentDirectories != null)
             {
-                return;
+                foreach (var dir in settings.AgentDirectories)
+                {
+                    if (!string.IsNullOrWhiteSpace(dir))
+                    {
+                        AgentDirsCollection.Add(new AgentDirItem { Path = dir });
+                    }
+                }
             }
+
+            await AdvancedSettingsDialog.ShowAsync();
+        }
+
+        private async void AdvancedSettingsDialog_PrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
+        {
+            var agentDirs = AgentDirsCollection
+                .Select(item => item.Path?.Trim())
+                .Where(p => !string.IsNullOrEmpty(p))
+                .ToList();
 
             var result = _service.SaveSettings(new SkillManagerSettings
             {
-                ActiveSkillsPath = ActivePathBox.Text,
-                InactiveSkillsPath = InactivePathBox.Text
+                ActiveSkillsPath = DialogActivePathBox.Text,
+                InactiveSkillsPath = DialogInactivePathBox.Text,
+                AgentDirectories = agentDirs!
             });
 
-            // 如果保存失败，则直接展示错误并停止刷新。
             if (!result.success)
             {
                 StatusMessage.Text = result.message;
@@ -252,6 +269,65 @@ namespace ToolBox.Views
             }
 
             await RefreshDataAsync(result.message);
+        }
+
+        private async void BrowseActivePath_Click(object sender, RoutedEventArgs e)
+        {
+            var folder = await PickFolderAsync();
+            if (folder != null)
+            {
+                DialogActivePathBox.Text = folder;
+            }
+        }
+
+        private async void BrowseInactivePath_Click(object sender, RoutedEventArgs e)
+        {
+            var folder = await PickFolderAsync();
+            if (folder != null)
+            {
+                DialogInactivePathBox.Text = folder;
+            }
+        }
+
+        private async void BrowseAgentDir_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is AgentDirItem item)
+            {
+                var folder = await PickFolderAsync();
+                if (folder != null)
+                {
+                    item.Path = folder;
+                }
+            }
+        }
+
+        private void AddAgentDir_Click(object sender, RoutedEventArgs e)
+        {
+            AgentDirsCollection.Add(new AgentDirItem { Path = string.Empty });
+        }
+
+        private void RemoveAgentDir_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is AgentDirItem item)
+            {
+                AgentDirsCollection.Remove(item);
+            }
+        }
+
+        private async Task<string?> PickFolderAsync()
+        {
+            var picker = new Windows.Storage.Pickers.FolderPicker();
+            picker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.Desktop;
+            picker.FileTypeFilter.Add("*");
+            
+            var window = App.MainWindowInstance;
+            if (window != null)
+            {
+                WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(window));
+            }
+            
+            var folder = await picker.PickSingleFolderAsync();
+            return folder?.Path;
         }
 
         /// <summary>
@@ -485,5 +561,24 @@ namespace ToolBox.Views
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
 
+    }
+
+    public class AgentDirItem : INotifyPropertyChanged
+    {
+        private string _path = string.Empty;
+        public string Path
+        {
+            get => _path;
+            set
+            {
+                if (_path != value)
+                {
+                    _path = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Path)));
+                }
+            }
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
     }
 }

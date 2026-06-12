@@ -4,13 +4,14 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:local="using:ToolBox.Views"
     mc:Ignorable="d"
     Loaded="Page_Loaded">
 
     <Grid Padding="24,20,24,16" RowDefinitions="Auto,Auto,*">
         <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,12">
             <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                <TextBlock Text="Skill 切换管理" Style="{StaticResource TitleTextBlockStyle}" />
+                <TextBlock Text="Skill 管理器" Style="{StaticResource TitleTextBlockStyle}" />
                 <TextBlock x:Name="CountText" Text="" Style="{StaticResource CaptionTextBlockStyle}"
                            VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 <TextBlock x:Name="StatusMessage" Text="" Style="{StaticResource CaptionTextBlockStyle}"
@@ -18,10 +19,10 @@
             </StackPanel>
 
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
-                <Button Click="SaveSettings_Click" Padding="10,6">
+                <Button Click="AdvancedSettings_Click" Padding="10,6">
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <FontIcon Glyph="&#xE74E;" FontSize="12" />
-                        <TextBlock Text="保存目录配置" />
+                        <FontIcon Glyph="&#xE713;" FontSize="12" />
+                        <TextBlock Text="高级设置" />
                     </StackPanel>
                 </Button>
                 <Button Click="Refresh_Click" ToolTipService.ToolTip="刷新" Padding="8,6">
@@ -30,25 +31,8 @@
             </StackPanel>
         </Grid>
 
-        <Grid Grid.Row="1" RowDefinitions="Auto,Auto" Margin="0,0,0,12">
-            <Grid Padding="16,14" CornerRadius="8"
-                  Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                  BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
-                  RowDefinitions="Auto,Auto" ColumnDefinitions="*,16,*">
-                <TextBox x:Name="ActivePathBox"
-                         Header="启用目录"
-                         PlaceholderText="例如：%USERPROFILE%\.agents\skills" />
-                <TextBox x:Name="InactivePathBox" Grid.Column="2"
-                         Header="停用目录"
-                         PlaceholderText="例如：D:\Backup\AI\skills" />
-
-                <TextBlock Grid.Row="1" Grid.ColumnSpan="3" Margin="0,12,0,0"
-                           Text="关闭 skill 时会把整个 skill 文件夹移动到停用目录；重新开启时再移动回启用目录。"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                           TextWrapping="Wrap" />
-            </Grid>
-
-            <Grid Grid.Row="1" Margin="0,12,0,0" ColumnDefinitions="280,140,140,*">
+        <Grid Grid.Row="1" RowDefinitions="Auto" Margin="0,0,0,12">
+            <Grid Margin="0,0,0,0" ColumnDefinitions="280,140,140,*">
                 <AutoSuggestBox x:Name="SearchBox" PlaceholderText="搜索 skill 名称、别名或描述..."
                                 QueryIcon="Find" TextChanged="SearchBox_TextChanged" />
                 <ComboBox x:Name="CategoryFilter" Grid.Column="1" Margin="12,0,0,0"
@@ -113,5 +97,46 @@
                           HorizontalAlignment="Center" VerticalAlignment="Center"
                           Width="40" Height="40" />
         </Grid>
+
+        <ContentDialog x:Name="AdvancedSettingsDialog" Title="高级设置" PrimaryButtonText="保存" CloseButtonText="取消" PrimaryButtonClick="AdvancedSettingsDialog_PrimaryButtonClick">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="500">
+                <StackPanel Spacing="16" Width="480">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Skill 启用目录" FontWeight="SemiBold" />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBox x:Name="DialogActivePathBox" PlaceholderText="例如：%USERPROFILE%\.agents\skills" />
+                            <Button Grid.Column="1" Margin="8,0,0,0" Content="浏览..." Click="BrowseActivePath_Click" />
+                        </Grid>
+                    </StackPanel>
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Skill 停用目录" FontWeight="SemiBold" />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBox x:Name="DialogInactivePathBox" PlaceholderText="例如：D:\Backup\AI\skills" />
+                            <Button Grid.Column="1" Margin="8,0,0,0" Content="浏览..." Click="BrowseInactivePath_Click" />
+                        </Grid>
+                    </StackPanel>
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Agent 软链接分发目录" FontWeight="SemiBold" />
+                        <ListView x:Name="AgentDirsList" SelectionMode="None" ItemsSource="{x:Bind AgentDirsCollection, Mode=OneWay}" 
+                                  MaxHeight="240" ScrollViewer.VerticalScrollBarVisibility="Auto">
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="local:AgentDirItem">
+                                    <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,8">
+                                        <TextBox Text="{x:Bind Path, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="Agent skill 目录绝对路径" />
+                                        <Button Grid.Column="1" Margin="8,0,0,0" Content="浏览..." Click="BrowseAgentDir_Click" Tag="{x:Bind}" />
+                                        <Button Grid.Column="2" Margin="8,0,0,0" Click="RemoveAgentDir_Click" Tag="{x:Bind}">
+                                            <FontIcon Glyph="&#xE107;" FontSize="12" />
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                        <Button Content="添加目录" Click="AddAgentDir_Click" HorizontalAlignment="Left" />
+                        <TextBlock Text="关闭 skill 时会将文件夹移入停用目录，并删除各 Agent 目录下的软链接；重新开启时移回启用目录，并同步生成软链接。"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" Margin="0,8,0,0" FontSize="12"/>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </ContentDialog>
     </Grid>
 </Page>

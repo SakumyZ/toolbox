@@ -43,7 +43,7 @@
                         <FontIcon Glyph="&#xE128;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Tag="SkillManager" Content="Skill 切换">
+                <NavigationViewItem Tag="SkillManager" Content="Skill 管理器">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xF117;" />
                     </NavigationViewItem.Icon>

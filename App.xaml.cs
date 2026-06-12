@@ -301,8 +301,10 @@ namespace ToolBox
                                 try
                                 {
                                     backupService.CreateBackupZip(tempZipPath);
-                                    await backupService.UploadBackupToWebDavAsync(webdav.Url, webdav.Username, webdav.Password, webdav.Directory, tempZipPath);
-                                    Log.Information("App Closed: 已自动将本地最新配置上传至云端");
+                                    var remoteFileName = $"toolbox_backup_{DateTime.Now:yyyyMMddHHmmss}.zip";
+                                    await backupService.UploadBackupToWebDavAsync(webdav.Url, webdav.Username, webdav.Password, webdav.Directory, tempZipPath, remoteFileName);
+                                    await backupService.CleanOldBackupsAsync(webdav.Url, webdav.Username, webdav.Password, webdav.Directory, webdav.MaxBackupCount);
+                                    Log.Information("App Closed: 已自动将本地最新配置上传至云端，文件名: {FileName}", remoteFileName);
                                 }
                                 finally
                                 {

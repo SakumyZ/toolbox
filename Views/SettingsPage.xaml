@@ -134,7 +134,7 @@
                     <!-- 日志级别 -->
                     <Grid Grid.Row="1" ColumnDefinitions="Auto,*" Margin="0,0,0,16">
                         <TextBlock Text="日志级别" VerticalAlignment="Center" MinWidth="100" />
-                        <ComboBox x:Name="LogLevelBox" Grid.Column="1" SelectedIndex="2" Width="150"
+                        <ComboBox x:Name="LogLevelBox" Grid.Column="1" SelectedIndex="2" Width="200"
                                   SelectionChanged="LogLevelBox_SelectionChanged">
                             <ComboBoxItem Tag="Verbose">Verbose (详细)</ComboBoxItem>
                             <ComboBoxItem Tag="Debug">Debug (调试)</ComboBoxItem>
@@ -193,7 +193,7 @@
                         <StackPanel Spacing="12">
                             <TextBlock Text="WebDAV 同步设置" FontWeight="SemiBold" FontSize="14" />
                             
-                            <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="12">
+                            <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="12">
                                 <!-- 服务器地址 -->
                                 <TextBlock Text="服务器地址 (URL)" VerticalAlignment="Center" />
                                 <TextBox x:Name="WebDavUrlBox" Grid.Column="1" PlaceholderText="例如: https://dav.jianguoyun.com/dav/" />
@@ -209,6 +209,13 @@
                                 <!-- 备份目录 -->
                                 <TextBlock Grid.Row="3" Text="备份目录 (可选)" VerticalAlignment="Center" />
                                 <TextBox x:Name="WebDavDirectoryBox" Grid.Row="3" Grid.Column="1" PlaceholderText="例如: ToolBox/Backup (留空则直接上传至根目录)" />
+
+                                <!-- 最多保留备份数 -->
+                                <TextBlock Grid.Row="4" Text="最多保留备份数" VerticalAlignment="Center" />
+                                <NumberBox x:Name="WebDavMaxBackupCountBox" Grid.Row="4" Grid.Column="1" Value="10" Width="180" HorizontalAlignment="Left"
+                                           Minimum="1" Maximum="100"
+                                           SpinButtonPlacementMode="Compact"
+                                           LargeChange="5" SmallChange="1" />
                             </Grid>
 
                             <!-- 自动同步选项 -->
