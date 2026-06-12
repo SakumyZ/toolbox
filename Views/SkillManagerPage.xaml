@@ -19,6 +19,18 @@
             </StackPanel>
 
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                <Button Click="CategoryManager_Click" Padding="10,6">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE81E;" FontSize="12" />
+                        <TextBlock Text="分类管理" />
+                    </StackPanel>
+                </Button>
+                <Button Click="ArchiveManager_Click" Padding="10,6">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE7B8;" FontSize="12" />
+                        <TextBlock Text="归档管理" />
+                    </StackPanel>
+                </Button>
                 <Button Click="AdvancedSettings_Click" Padding="10,6">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <FontIcon Glyph="&#xE713;" FontSize="12" />
@@ -63,30 +75,31 @@
                               BorderThickness="1"
                               CornerRadius="8"
                               ColumnDefinitions="*,Auto">
-                            <StackPanel Spacing="4">
+                            <StackPanel Spacing="4" VerticalAlignment="Center">
                                 <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                     <TextBlock Text="{Binding DisplayName}" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                    <Border Background="{ThemeResource AccentFillColorSecondaryBrush}"
+                                    <Border Background="{Binding CategoryBackgroundBrush}"
                                             CornerRadius="4"
                                             Padding="6,1"
                                             VerticalAlignment="Center">
                                         <TextBlock Text="{Binding Category}" FontSize="11" VerticalAlignment="Center" />
                                     </Border>
-                                    <Button Click="EditSkill_Click" Tag="{Binding SkillId}" Padding="8,2" MinHeight="28" VerticalAlignment="Center">
-                                        <StackPanel Orientation="Horizontal" Spacing="6">
-                                            <FontIcon Glyph="&#xE70F;" FontSize="12" />
-                                            <TextBlock Text="编辑别名/分类" FontSize="12" VerticalAlignment="Center" />
-                                        </StackPanel>
-                                    </Button>
                                 </StackPanel>
                             </StackPanel>
 
-                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="12,0,0,0">
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center" Margin="12,0,0,0">
+                                <Button Click="EditSkill_Click" Tag="{Binding SkillId}" Padding="8,4" MinHeight="28" VerticalAlignment="Center" Background="Transparent" BorderThickness="0">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon Glyph="&#xE70F;" FontSize="12" />
+                                        <TextBlock Text="编辑" FontSize="12" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
                                 <ToggleSwitch OnContent="开启"
                                               OffContent="关闭"
                                               IsOn="{Binding IsActive}"
                                               Tag="{Binding SkillId}"
-                                              Toggled="SkillToggle_Toggled" />
+                                              Toggled="SkillToggle_Toggled" 
+                                              Margin="0" VerticalAlignment="Center" />
                             </StackPanel>
                         </Grid>
                     </DataTemplate>
@@ -137,6 +150,56 @@
                     </StackPanel>
                 </StackPanel>
             </ScrollViewer>
+        </ContentDialog>
+
+        <ContentDialog x:Name="ArchiveManagerDialog" Title="归档管理" CloseButtonText="关闭">
+            <Grid Width="500" MinHeight="300">
+                <ListView x:Name="ArchivedSkillList" SelectionMode="None">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Padding="8" ColumnDefinitions="*,Auto,Auto">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding Category}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                                <Button Grid.Column="1" Click="UnarchiveSkill_Click" Tag="{Binding SkillId}" Margin="8,0" Content="取消归档" />
+                                <Button Grid.Column="2" Click="DeleteArchivedSkill_Click" Tag="{Binding SkillId}" Content="彻底删除" Foreground="White" BorderThickness="0">
+                                    <Button.Resources>
+                                        <SolidColorBrush x:Key="ButtonBackground" Color="#D13438" />
+                                        <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FF99A4" />
+                                        <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#C62828" />
+                                    </Button.Resources>
+                                </Button>
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+                <TextBlock x:Name="EmptyArchiveText" Text="暂无归档内容" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="Collapsed" />
+            </Grid>
+        </ContentDialog>
+
+        <ContentDialog x:Name="CategoryManagerDialog" Title="分类管理" CloseButtonText="关闭">
+            <Grid Width="500" MinHeight="300">
+                <ListView x:Name="CategoryList" SelectionMode="None">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Padding="8" ColumnDefinitions="Auto,*,Auto,Auto">
+                                <Border Grid.Column="0" Width="16" Height="16" CornerRadius="4" VerticalAlignment="Center" Margin="0,0,12,0" Background="{Binding BackgroundBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" />
+                                <TextBlock Grid.Column="1" Text="{Binding CategoryName}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <Button Grid.Column="2" Click="RenameCategory_Click" Tag="{Binding CategoryName}" Margin="8,0" Content="重命名" />
+                                <Button Grid.Column="3" Click="DeleteCategory_Click" Tag="{Binding CategoryName}" Content="删除" Foreground="White" BorderThickness="0">
+                                    <Button.Resources>
+                                        <SolidColorBrush x:Key="ButtonBackground" Color="#D13438" />
+                                        <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FF99A4" />
+                                        <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#C62828" />
+                                    </Button.Resources>
+                                </Button>
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+                <TextBlock x:Name="EmptyCategoryText" Text="暂无分类" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="Collapsed" />
+            </Grid>
         </ContentDialog>
     </Grid>
 </Page>

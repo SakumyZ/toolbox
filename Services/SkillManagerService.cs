@@ -116,50 +116,93 @@ namespace ToolBox.Services
         {
             var settings = GetSettings();
             var metadataMap = GetMetadataMap();
+            var categoryColorsMap = GetCategoryColorsMap();
             var skills = new Dictionary<string, SkillItem>(StringComparer.OrdinalIgnoreCase);
 
             Log.Debug("SkillManagerService: 正在从目录扫描 Skill 列表...");
-            LoadSkillsFromDirectory(settings.ActiveSkillsPath, true, metadataMap, skills);
-            LoadSkillsFromDirectory(settings.InactiveSkillsPath, false, metadataMap, skills);
+            LoadSkillsFromDirectory(settings.ActiveSkillsPath, true, metadataMap, categoryColorsMap, skills);
+            LoadSkillsFromDirectory(settings.InactiveSkillsPath, false, metadataMap, categoryColorsMap, skills);
 
             return skills.Values
-                .OrderByDescending(item => item.IsActive)
-                .ThenBy(item => string.IsNullOrWhiteSpace(item.Category) ? "未分类" : item.Category, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
 
         /// <summary>
         /// 保存 skill 的别名与分类。
         /// </summary>
-        public (bool success, string message) SaveSkillMetadata(string skillId, string alias, string category)
+        public (bool success, string message) SaveSkillMetadata(string skillId, string alias, string category, string colorHex)
         {
             if (string.IsNullOrWhiteSpace(skillId))
             {
                 return (false, "Skill 标识不能为空");
             }
 
-            Log.Information("SkillManagerService: 正在保存 Skill 元数据 -> ID: '{SkillId}', 别名: '{Alias}', 分类: '{Category}'", skillId, alias, category);
+            Log.Information("SkillManagerService: 正在保存 Skill 元数据 -> ID: '{SkillId}', 别名: '{Alias}', 分类: '{Category}', 颜色: '{ColorHex}'", skillId, alias, category, colorHex);
             using var connection = new SqliteConnection(_connectionString);
             connection.Open();
+            using var transaction = connection.BeginTransaction();
 
-            var now = DateTime.Now.ToString("o");
+            try
+            {
+                var now = DateTime.Now.ToString("o");
+                var command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText = @"
+                    INSERT INTO SkillMetadata (SkillId, Alias, Category, CreatedAt, UpdatedAt)
+                    VALUES ($skillId, $alias, $category, $createdAt, $updatedAt)
+                    ON CONFLICT(SkillId) DO UPDATE SET
+                        Alias = excluded.Alias,
+                        Category = excluded.Category,
+                        UpdatedAt = excluded.UpdatedAt;";
+                command.Parameters.AddWithValue("$skillId", skillId.Trim());
+                command.Parameters.AddWithValue("$alias", alias.Trim());
+                command.Parameters.AddWithValue("$category", category.Trim());
+                command.Parameters.AddWithValue("$createdAt", now);
+                command.Parameters.AddWithValue("$updatedAt", now);
+                command.ExecuteNonQuery();
+
+                if (!string.IsNullOrWhiteSpace(category))
+                {
+                    var catCommand = connection.CreateCommand();
+                    catCommand.Transaction = transaction;
+                    catCommand.CommandText = @"
+                        INSERT INTO CategoryMetadata (Category, ColorHex)
+                        VALUES ($category, $colorHex)
+                        ON CONFLICT(Category) DO UPDATE SET
+                            ColorHex = excluded.ColorHex;";
+                    catCommand.Parameters.AddWithValue("$category", category.Trim());
+                    catCommand.Parameters.AddWithValue("$colorHex", colorHex.Trim());
+                    catCommand.ExecuteNonQuery();
+                }
+
+                transaction.Commit();
+                return (true, "Skill 信息已保存");
+            }
+            catch (Exception ex)
+            {
+                transaction.Rollback();
+                Log.Error(ex, "SkillManagerService: 保存 Skill 元数据失败");
+                return (false, $"保存失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 获取指定分类的颜色。
+        /// </summary>
+        public string GetCategoryColor(string category)
+        {
+            if (string.IsNullOrWhiteSpace(category) || category == "未分类")
+            {
+                return string.Empty;
+            }
+
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
             var command = connection.CreateCommand();
-            command.CommandText = @"
-                INSERT INTO SkillMetadata (SkillId, Alias, Category, CreatedAt, UpdatedAt)
-                VALUES ($skillId, $alias, $category, $createdAt, $updatedAt)
-                ON CONFLICT(SkillId) DO UPDATE SET
-                    Alias = excluded.Alias,
-                    Category = excluded.Category,
-                    UpdatedAt = excluded.UpdatedAt;";
-            command.Parameters.AddWithValue("$skillId", skillId.Trim());
-            command.Parameters.AddWithValue("$alias", alias.Trim());
+            command.CommandText = "SELECT ColorHex FROM CategoryMetadata WHERE Category = $category";
             command.Parameters.AddWithValue("$category", category.Trim());
-            command.Parameters.AddWithValue("$createdAt", now);
-            command.Parameters.AddWithValue("$updatedAt", now);
-            command.ExecuteNonQuery();
-
-            return (true, "Skill 信息已保存");
+            return command.ExecuteScalar() as string ?? string.Empty;
         }
 
         /// <summary>
@@ -300,6 +343,101 @@ namespace ToolBox.Services
         }
 
         /// <summary>
+        /// 归档或取消归档 Skill。
+        /// </summary>
+        public (bool success, string message) ArchiveSkill(string skillId, bool isArchived)
+        {
+            Log.Information("SkillManagerService: 正在更新归档状态 -> ID: '{SkillId}', IsArchived: {IsArchived}", skillId, isArchived);
+            
+            // First, if we are archiving and it is currently active, we should deactivate it.
+            if (isArchived)
+            {
+                var skills = GetAllSkills();
+                var skill = skills.FirstOrDefault(s => string.Equals(s.SkillId, skillId, StringComparison.OrdinalIgnoreCase));
+                if (skill != null && skill.IsActive)
+                {
+                    var stopResult = SetSkillActive(skillId, false);
+                    if (!stopResult.success)
+                    {
+                        return (false, $"归档前停用失败: {stopResult.message}");
+                    }
+                }
+            }
+
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
+
+            var command = connection.CreateCommand();
+            command.CommandText = "UPDATE SkillMetadata SET IsArchived = $isArchived WHERE SkillId = $skillId";
+            command.Parameters.AddWithValue("$isArchived", isArchived ? 1 : 0);
+            command.Parameters.AddWithValue("$skillId", skillId);
+            var rows = command.ExecuteNonQuery();
+
+            if (rows == 0)
+            {
+                // If metadata doesn't exist, create it with IsArchived
+                var now = DateTime.Now.ToString("o");
+                var insertCmd = connection.CreateCommand();
+                insertCmd.CommandText = @"
+                    INSERT INTO SkillMetadata (SkillId, Alias, Category, CreatedAt, UpdatedAt, IsArchived)
+                    VALUES ($skillId, '', '', $createdAt, $updatedAt, $isArchived)";
+                insertCmd.Parameters.AddWithValue("$skillId", skillId);
+                insertCmd.Parameters.AddWithValue("$createdAt", now);
+                insertCmd.Parameters.AddWithValue("$updatedAt", now);
+                insertCmd.Parameters.AddWithValue("$isArchived", isArchived ? 1 : 0);
+                insertCmd.ExecuteNonQuery();
+            }
+
+            return (true, isArchived ? "已归档" : "已取消归档");
+        }
+
+        /// <summary>
+        /// 彻底删除 Skill。
+        /// </summary>
+        public (bool success, string message) DeleteSkill(string skillId)
+        {
+            var skills = GetAllSkills();
+            var skill = skills.FirstOrDefault(s => string.Equals(s.SkillId, skillId, StringComparison.OrdinalIgnoreCase));
+            if (skill == null)
+            {
+                return (false, "未找到该 Skill");
+            }
+
+            if (skill.IsActive)
+            {
+                var stopResult = SetSkillActive(skillId, false);
+                if (!stopResult.success)
+                {
+                    return (false, $"删除前停用失败: {stopResult.message}");
+                }
+                
+                skill.CurrentPath = Path.Combine(GetSettings().InactiveSkillsPath, skillId);
+            }
+
+            try
+            {
+                if (Directory.Exists(skill.CurrentPath))
+                {
+                    Directory.Delete(skill.CurrentPath, recursive: true);
+                }
+
+                using var connection = new SqliteConnection(_connectionString);
+                connection.Open();
+                var command = connection.CreateCommand();
+                command.CommandText = "DELETE FROM SkillMetadata WHERE SkillId = $skillId";
+                command.Parameters.AddWithValue("$skillId", skillId);
+                command.ExecuteNonQuery();
+
+                return (true, "已彻底删除");
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "SkillManagerService: 删除 Skill 失败");
+                return (false, $"删除失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// 获取分类列表。
         /// </summary>
         public List<string> GetAllCategories()
@@ -307,21 +445,179 @@ namespace ToolBox.Services
             using var connection = new SqliteConnection(_connectionString);
             connection.Open();
 
-            var categories = new List<string> { "全部分类" };
-            var command = connection.CreateCommand();
-            command.CommandText = @"
-                SELECT DISTINCT Category
-                FROM SkillMetadata
-                WHERE TRIM(Category) <> ''
-                ORDER BY Category COLLATE NOCASE ASC";
-
-            using var reader = command.ExecuteReader();
-            while (reader.Read())
+            var categories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            
+            var cmd1 = connection.CreateCommand();
+            cmd1.CommandText = "SELECT DISTINCT Category FROM SkillMetadata WHERE TRIM(Category) <> ''";
+            using (var reader = cmd1.ExecuteReader())
             {
-                categories.Add(reader.GetString(0));
+                while (reader.Read())
+                {
+                    categories.Add(reader.GetString(0));
+                }
             }
 
-            return categories;
+            var cmd2 = connection.CreateCommand();
+            cmd2.CommandText = "SELECT Category FROM CategoryMetadata";
+            using (var reader = cmd2.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    categories.Add(reader.GetString(0));
+                }
+            }
+
+            var list = new List<string> { "全部分类" };
+            list.AddRange(categories.OrderBy(c => c));
+            return list;
+        }
+
+        /// <summary>
+        /// 获取带颜色的完整分类列表，供管理页面使用。
+        /// </summary>
+        public List<(string Category, string ColorHex)> GetAllCategoriesForManagement()
+        {
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
+
+            var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            var cmd1 = connection.CreateCommand();
+            cmd1.CommandText = "SELECT Category, ColorHex FROM CategoryMetadata";
+            using (var reader1 = cmd1.ExecuteReader())
+            {
+                while (reader1.Read())
+                {
+                    dict[reader1.GetString(0)] = reader1.GetString(1);
+                }
+            }
+
+            var cmd2 = connection.CreateCommand();
+            cmd2.CommandText = "SELECT DISTINCT Category FROM SkillMetadata WHERE TRIM(Category) <> ''";
+            using (var reader2 = cmd2.ExecuteReader())
+            {
+                while (reader2.Read())
+                {
+                    var cat = reader2.GetString(0);
+                    if (!dict.ContainsKey(cat))
+                    {
+                        dict[cat] = "";
+                    }
+                }
+            }
+
+            var categories = new List<(string, string)>();
+            foreach (var kvp in dict)
+            {
+                if (kvp.Key != "全部分类" && kvp.Key != "未分类")
+                {
+                    categories.Add((kvp.Key, kvp.Value));
+                }
+            }
+            
+            return categories.OrderBy(c => c.Item1).ToList();
+        }
+
+        /// <summary>
+        /// 删除分类，并将相关技能置为未分类。
+        /// </summary>
+        public (bool success, string message) DeleteCategory(string category)
+        {
+            try
+            {
+                using var connection = new SqliteConnection(_connectionString);
+                connection.Open();
+                using var transaction = connection.BeginTransaction();
+
+                var cmd1 = connection.CreateCommand();
+                cmd1.Transaction = transaction;
+                cmd1.CommandText = "DELETE FROM CategoryMetadata WHERE Category = $category";
+                cmd1.Parameters.AddWithValue("$category", category);
+                cmd1.ExecuteNonQuery();
+
+                var cmd2 = connection.CreateCommand();
+                cmd2.Transaction = transaction;
+                cmd2.CommandText = "UPDATE SkillMetadata SET Category = '' WHERE Category = $category";
+                cmd2.Parameters.AddWithValue("$category", category);
+                cmd2.ExecuteNonQuery();
+
+                transaction.Commit();
+                return (true, "已删除分类");
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "SkillManagerService: 删除分类失败");
+                return (false, $"删除失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 重命名分类，同步更新相关技能的分类标签。
+        /// </summary>
+        public (bool success, string message) RenameCategory(string oldCategory, string newCategory)
+        {
+            if (string.IsNullOrWhiteSpace(newCategory))
+            {
+                return (false, "分类名称不能为空");
+            }
+            newCategory = newCategory.Trim();
+
+            if (string.Equals(oldCategory, newCategory, StringComparison.OrdinalIgnoreCase))
+            {
+                return (true, "名称未变");
+            }
+
+            try
+            {
+                using var connection = new SqliteConnection(_connectionString);
+                connection.Open();
+                using var transaction = connection.BeginTransaction();
+
+                string oldColor = "";
+                var cmdColor = connection.CreateCommand();
+                cmdColor.Transaction = transaction;
+                cmdColor.CommandText = "SELECT ColorHex FROM CategoryMetadata WHERE Category = $oldCat";
+                cmdColor.Parameters.AddWithValue("$oldCat", oldCategory);
+                var result = cmdColor.ExecuteScalar();
+                if (result != null && result != DBNull.Value)
+                {
+                    oldColor = result.ToString() ?? "";
+                }
+
+                var cmdDel = connection.CreateCommand();
+                cmdDel.Transaction = transaction;
+                cmdDel.CommandText = "DELETE FROM CategoryMetadata WHERE Category = $oldCat";
+                cmdDel.Parameters.AddWithValue("$oldCat", oldCategory);
+                cmdDel.ExecuteNonQuery();
+
+                if (!string.IsNullOrWhiteSpace(oldColor))
+                {
+                    var cmdIns = connection.CreateCommand();
+                    cmdIns.Transaction = transaction;
+                    cmdIns.CommandText = @"
+                        INSERT INTO CategoryMetadata (Category, ColorHex)
+                        VALUES ($newCat, $color)
+                        ON CONFLICT(Category) DO UPDATE SET ColorHex = excluded.ColorHex";
+                    cmdIns.Parameters.AddWithValue("$newCat", newCategory);
+                    cmdIns.Parameters.AddWithValue("$color", oldColor);
+                    cmdIns.ExecuteNonQuery();
+                }
+
+                var cmdUpd = connection.CreateCommand();
+                cmdUpd.Transaction = transaction;
+                cmdUpd.CommandText = "UPDATE SkillMetadata SET Category = $newCat WHERE Category = $oldCat";
+                cmdUpd.Parameters.AddWithValue("$oldCat", oldCategory);
+                cmdUpd.Parameters.AddWithValue("$newCat", newCategory);
+                cmdUpd.ExecuteNonQuery();
+
+                transaction.Commit();
+                return (true, "已重命名分类");
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "SkillManagerService: 重命名分类失败");
+                return (false, $"重命名失败: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -349,8 +645,24 @@ namespace ToolBox.Services
                 );
 
                 CREATE INDEX IF NOT EXISTS IX_SkillMetadata_Category ON SkillMetadata(Category);
+
+                CREATE TABLE IF NOT EXISTS CategoryMetadata (
+                    Category TEXT PRIMARY KEY,
+                    ColorHex TEXT NOT NULL DEFAULT ''
+                );
             ";
             command.ExecuteNonQuery();
+
+            try
+            {
+                var alterCmd = connection.CreateCommand();
+                alterCmd.CommandText = "ALTER TABLE SkillMetadata ADD COLUMN IsArchived INTEGER NOT NULL DEFAULT 0;";
+                alterCmd.ExecuteNonQuery();
+            }
+            catch
+            {
+                // Ignore if column already exists
+            }
         }
 
         /// <summary>
@@ -377,7 +689,7 @@ namespace ToolBox.Services
 
             var command = connection.CreateCommand();
             command.CommandText = @"
-                SELECT SkillId, Alias, Category, CreatedAt, UpdatedAt
+                SELECT SkillId, Alias, Category, CreatedAt, UpdatedAt, IsArchived
                 FROM SkillMetadata";
 
             using var reader = command.ExecuteReader();
@@ -389,8 +701,30 @@ namespace ToolBox.Services
                     Alias = reader.GetString(1),
                     Category = reader.GetString(2),
                     CreatedAt = DateTime.Parse(reader.GetString(3)),
-                    UpdatedAt = DateTime.Parse(reader.GetString(4))
+                    UpdatedAt = DateTime.Parse(reader.GetString(4)),
+                    IsArchived = reader.GetBoolean(5)
                 };
+            }
+
+            return map;
+        }
+
+        /// <summary>
+        /// 获取分类颜色映射。
+        /// </summary>
+        private Dictionary<string, string> GetCategoryColorsMap()
+        {
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
+
+            var command = connection.CreateCommand();
+            command.CommandText = "SELECT Category, ColorHex FROM CategoryMetadata";
+
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                map[reader.GetString(0)] = reader.GetString(1);
             }
 
             return map;
@@ -403,6 +737,7 @@ namespace ToolBox.Services
             string rootPath,
             bool isActive,
             IReadOnlyDictionary<string, SkillMetadata> metadataMap,
+            IReadOnlyDictionary<string, string> categoryColorsMap,
             IDictionary<string, SkillItem> skills)
         {
             // 如果目录不存在，则跳过扫描。
@@ -424,15 +759,20 @@ namespace ToolBox.Services
                 var skillFilePath = Path.Combine(directory, "SKILL.md");
                 metadataMap.TryGetValue(skillId, out var metadata);
                 var description = ReadSkillDescription(skillFilePath);
+                
+                var category = string.IsNullOrWhiteSpace(metadata?.Category) ? "未分类" : metadata.Category;
+                var colorHex = categoryColorsMap.TryGetValue(category, out var hex) ? hex : string.Empty;
 
                 skills[skillId] = new SkillItem
                 {
                     SkillId = skillId,
                     Alias = metadata?.Alias ?? string.Empty,
-                    Category = string.IsNullOrWhiteSpace(metadata?.Category) ? "未分类" : metadata.Category,
+                    Category = category,
+                    CategoryColorHex = colorHex,
                     DisplayName = string.IsNullOrWhiteSpace(metadata?.Alias) ? skillId : metadata.Alias,
                     Description = string.IsNullOrWhiteSpace(description) ? "未读取到描述" : description,
                     IsActive = isActive,
+                    IsArchived = metadata?.IsArchived ?? false,
                     CurrentPath = directory,
                     SkillFilePath = skillFilePath
                 };

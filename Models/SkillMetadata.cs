@@ -23,6 +23,11 @@ namespace ToolBox.Models
         public string Category { get; set; } = string.Empty;
 
         /// <summary>
+        /// 是否已归档。
+        /// </summary>
+        public bool IsArchived { get; set; }
+
+        /// <summary>
         /// 创建时间。
         /// </summary>
         public DateTime CreatedAt { get; set; }

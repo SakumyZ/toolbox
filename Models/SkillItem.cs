@@ -21,6 +21,11 @@ namespace ToolBox.Models
         public string Category { get; set; } = string.Empty;
 
         /// <summary>
+        /// Skill 分类颜色。
+        /// </summary>
+        public string CategoryColorHex { get; set; } = string.Empty;
+
+        /// <summary>
         /// 展示名称。
         /// </summary>
         public string DisplayName { get; set; } = string.Empty;
@@ -34,6 +39,11 @@ namespace ToolBox.Models
         /// 当前是否激活。
         /// </summary>
         public bool IsActive { get; set; }
+
+        /// <summary>
+        /// 是否已归档。
+        /// </summary>
+        public bool IsArchived { get; set; }
 
         /// <summary>
         /// Skill 所在目录。

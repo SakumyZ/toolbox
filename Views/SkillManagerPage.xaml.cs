@@ -98,7 +98,7 @@ namespace ToolBox.Views
         {
             _displaySkills.Clear();
 
-            var filtered = _allSkills.AsEnumerable();
+            var filtered = _allSkills.Where(item => !item.IsArchived).AsEnumerable();
             var searchText = SearchBox.Text?.Trim();
 
             // 如果用户输入了关键词，则按名称、别名和描述做模糊筛选。
@@ -246,6 +246,153 @@ namespace ToolBox.Views
             }
 
             await AdvancedSettingsDialog.ShowAsync();
+        }
+
+        private async void CategoryManager_Click(object sender, RoutedEventArgs e)
+        {
+            await RefreshCategoryListAsync();
+            await CategoryManagerDialog.ShowAsync();
+        }
+
+        private async Task RefreshCategoryListAsync()
+        {
+            var rawCategories = await Task.Run(() => _service.GetAllCategoriesForManagement());
+            var viewModels = new ObservableCollection<CategoryItemViewModel>();
+            foreach (var cat in rawCategories)
+            {
+                Microsoft.UI.Xaml.Media.Brush brush;
+                if (string.IsNullOrWhiteSpace(cat.ColorHex))
+                {
+                    if (Microsoft.UI.Xaml.Application.Current.Resources.TryGetValue("AccentFillColorSecondaryBrush", out var res) && res is Microsoft.UI.Xaml.Media.Brush b)
+                    {
+                        brush = b;
+                    }
+                    else
+                    {
+                        brush = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+                    }
+                }
+                else
+                {
+                    try { brush = new Microsoft.UI.Xaml.Media.SolidColorBrush(ParseColorHex(cat.ColorHex)); }
+                    catch { brush = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent); }
+                }
+                viewModels.Add(new CategoryItemViewModel { CategoryName = cat.Category, BackgroundBrush = brush });
+            }
+            CategoryList.ItemsSource = viewModels;
+            EmptyCategoryText.Visibility = viewModels.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private async void RenameCategory_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is string oldName)
+            {
+                var textBox = new TextBox { Text = oldName, PlaceholderText = "新分类名称", MinWidth = 300 };
+                var renameDialog = new ContentDialog
+                {
+                    Title = "重命名分类",
+                    Content = textBox,
+                    PrimaryButtonText = "确定",
+                    CloseButtonText = "取消",
+                    XamlRoot = XamlRoot
+                };
+                
+                if (await renameDialog.ShowAsync() == ContentDialogResult.Primary)
+                {
+                    var newName = textBox.Text.Trim();
+                    if (string.IsNullOrWhiteSpace(newName))
+                    {
+                        StatusMessage.Text = "分类名不能为空";
+                        return;
+                    }
+                    var result = await Task.Run(() => _service.RenameCategory(oldName, newName));
+                    StatusMessage.Text = result.message;
+                    if (result.success)
+                    {
+                        await RefreshDataAsync();
+                        await RefreshCategoryListAsync();
+                    }
+                }
+            }
+        }
+
+        private async void DeleteCategory_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is string categoryName)
+            {
+                var confirmDialog = new ContentDialog
+                {
+                    Title = "彻底删除",
+                    Content = $"确定要删除分类 '{categoryName}' 吗？相关 Skill 将被置为未分类状态。",
+                    PrimaryButtonText = "确认删除",
+                    CloseButtonText = "取消",
+                    XamlRoot = XamlRoot
+                };
+
+                if (await confirmDialog.ShowAsync() == ContentDialogResult.Primary)
+                {
+                    var result = await Task.Run(() => _service.DeleteCategory(categoryName));
+                    StatusMessage.Text = result.message;
+                    if (result.success)
+                    {
+                        await RefreshDataAsync();
+                        await RefreshCategoryListAsync();
+                    }
+                }
+            }
+        }
+
+        private async void ArchiveManager_Click(object sender, RoutedEventArgs e)
+        {
+            await RefreshArchiveListAsync();
+            await ArchiveManagerDialog.ShowAsync();
+        }
+
+        private async Task RefreshArchiveListAsync()
+        {
+            var archivedSkills = await Task.Run(() => _service.GetAllSkills().Where(s => s.IsArchived).ToList());
+            ArchivedSkillList.ItemsSource = archivedSkills;
+            EmptyArchiveText.Visibility = archivedSkills.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private async void UnarchiveSkill_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is string skillId)
+            {
+                var result = _service.ArchiveSkill(skillId, false);
+                StatusMessage.Text = result.message;
+                if (result.success)
+                {
+                    await RefreshDataAsync();
+                    await RefreshArchiveListAsync();
+                }
+            }
+        }
+
+        private async void DeleteArchivedSkill_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is string skillId)
+            {
+                var confirmDialog = new ContentDialog
+                {
+                    Title = "彻底删除",
+                    Content = $"确定要彻底删除已归档的 Skill '{skillId}' 及其全部文件吗？此操作不可恢复。",
+                    PrimaryButtonText = "确认删除",
+                    CloseButtonText = "取消",
+                    XamlRoot = XamlRoot
+                };
+
+                if (await confirmDialog.ShowAsync() == ContentDialogResult.Primary)
+                {
+                    var result = await Task.Run(() => _service.DeleteSkill(skillId));
+                    StatusMessage.Text = result.message;
+                    if (result.success)
+                    {
+                        await RefreshDataAsync();
+                        await RefreshArchiveListAsync();
+                    }
+                }
+            }
         }
 
         private async void AdvancedSettingsDialog_PrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
@@ -453,12 +600,87 @@ namespace ToolBox.Views
                 Text = skill.Alias
             };
 
-            var categoryBox = new TextBox
+            var categoryBox = new ComboBox
             {
                 Header = "分类",
-                PlaceholderText = "例如：Review / 文档 / Redmine",
-                Text = skill.Category == "未分类" ? string.Empty : skill.Category
+                PlaceholderText = "可选择或输入新分类（清空为未分类）",
+                IsEditable = true,
+                Text = skill.Category == "未分类" ? string.Empty : skill.Category,
+                HorizontalAlignment = HorizontalAlignment.Stretch
             };
+
+            var categories = _service.GetAllCategories();
+            foreach (var cat in categories)
+            {
+                if (cat != "全部分类" && cat != "未分类")
+                {
+                    categoryBox.Items.Add(cat);
+                }
+            }
+
+            var colorPicker = new Microsoft.UI.Xaml.Controls.ColorPicker
+            {
+                IsMoreButtonVisible = false,
+                IsColorSliderVisible = true,
+                IsColorChannelTextInputVisible = true,
+                IsHexInputVisible = true,
+                IsAlphaEnabled = false,
+                IsAlphaSliderVisible = false,
+                IsAlphaTextInputVisible = false
+            };
+
+            var colorRect = new Border { Width = 16, Height = 16, CornerRadius = new CornerRadius(4), Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent), BorderBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray), BorderThickness = new Thickness(1) };
+            
+            var presetColorsPanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 0, 0, 12) };
+            string[] presets = { "#FF5733", "#33FF57", "#3357FF", "#F333FF", "#FFB533", "#33FFF5" };
+            bool isColorModified = false;
+            foreach (var hex in presets)
+            {
+                var btn = new Button 
+                { 
+                    Background = GetBrushFromHex(hex), 
+                    Width = 32, 
+                    Height = 32, 
+                    CornerRadius = new CornerRadius(16),
+                    Padding = new Thickness(0),
+                    BorderThickness = new Thickness(0)
+                };
+                btn.Click += (s, ev) => 
+                {
+                    try
+                    {
+                        colorPicker.Color = ParseColorHex(hex);
+                        isColorModified = true;
+                    }
+                    catch { }
+                };
+                presetColorsPanel.Children.Add(btn);
+            }
+
+            var flyoutStack = new StackPanel { Spacing = 8 };
+            flyoutStack.Children.Add(new TextBlock { Text = "预设颜色", FontSize = 12, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray) });
+            flyoutStack.Children.Add(presetColorsPanel);
+            flyoutStack.Children.Add(colorPicker);
+
+            var colorFlyout = new Flyout { Content = flyoutStack };
+
+            var colorBtnContent = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            colorBtnContent.Children.Add(colorRect);
+            colorBtnContent.Children.Add(new TextBlock { Text = "选择分类颜色" });
+
+            var colorButton = new Button
+            {
+                Content = colorBtnContent,
+                Flyout = colorFlyout,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Margin = new Thickness(12, 0, 0, 0)
+            };
+
+            var categoryGrid = new Grid { ColumnDefinitions = { new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }, new ColumnDefinition { Width = GridLength.Auto } } };
+            Grid.SetColumn(categoryBox, 0);
+            Grid.SetColumn(colorButton, 1);
+            categoryGrid.Children.Add(categoryBox);
+            categoryGrid.Children.Add(colorButton);
 
             var panel = new StackPanel
             {
@@ -466,7 +688,53 @@ namespace ToolBox.Views
                 MinWidth = 420
             };
             panel.Children.Add(aliasBox);
-            panel.Children.Add(categoryBox);
+            panel.Children.Add(categoryGrid);
+
+            string currentColorHex = _service.GetCategoryColor(skill.Category);
+            if (!string.IsNullOrWhiteSpace(currentColorHex))
+            {
+                try
+                {
+                    var col = ParseColorHex(currentColorHex);
+                    colorPicker.Color = col;
+                    colorRect.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(col);
+                }
+                catch { }
+            }
+
+            colorPicker.ColorChanged += (s, ev) =>
+            {
+                isColorModified = true;
+                colorRect.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(ev.NewColor);
+            };
+
+            categoryBox.SelectionChanged += (s, ev) =>
+            {
+                if (categoryBox.SelectedItem is string selectedText)
+                {
+                    UpdateColorPickerForCategory(selectedText);
+                }
+            };
+
+            void UpdateColorPickerForCategory(string categoryText)
+            {
+                var text = categoryText?.Trim();
+                if (!string.IsNullOrEmpty(text))
+                {
+                    var hex = _service.GetCategoryColor(text);
+                    if (!string.IsNullOrWhiteSpace(hex))
+                    {
+                        try
+                        {
+                            var col = ParseColorHex(hex);
+                            colorPicker.Color = col;
+                            colorRect.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(col);
+                            isColorModified = true;
+                        }
+                        catch { }
+                    }
+                }
+            }
 
             var dialog = new ContentDialog
             {
@@ -478,13 +746,64 @@ namespace ToolBox.Views
                 XamlRoot = XamlRoot
             };
 
+            var actionButtonsPanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Margin = new Thickness(0, 24, 0, 0) };
+            
+            var archiveBtn = new Button { Content = "归档", Padding = new Thickness(12, 4, 12, 4) };
+            archiveBtn.Click += async (s, ev) =>
+            {
+                dialog.Hide();
+                var result = _service.ArchiveSkill(skillId, true);
+                StatusMessage.Text = result.message;
+                if (result.success)
+                {
+                    await RefreshDataAsync();
+                }
+            };
+
+            var deleteBtn = new Button { Content = "删除", Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White), Padding = new Thickness(12, 4, 12, 4), BorderThickness = new Thickness(0) };
+            deleteBtn.Resources.Add("ButtonBackground", new Microsoft.UI.Xaml.Media.SolidColorBrush(ParseColorHex("#D13438")));
+            deleteBtn.Resources.Add("ButtonBackgroundPointerOver", new Microsoft.UI.Xaml.Media.SolidColorBrush(ParseColorHex("#FF99A4")));
+            deleteBtn.Resources.Add("ButtonBackgroundPressed", new Microsoft.UI.Xaml.Media.SolidColorBrush(ParseColorHex("#C62828")));
+            deleteBtn.Click += async (s, ev) =>
+            {
+                var confirmDialog = new ContentDialog
+                {
+                    Title = "彻底删除",
+                    Content = $"确定要彻底删除 Skill '{skillId}' 及其全部文件吗？此操作不可恢复。",
+                    PrimaryButtonText = "确认删除",
+                    CloseButtonText = "取消",
+                    XamlRoot = XamlRoot
+                };
+                if (await confirmDialog.ShowAsync() == ContentDialogResult.Primary)
+                {
+                    dialog.Hide();
+                    var result = await Task.Run(() => _service.DeleteSkill(skillId));
+                    StatusMessage.Text = result.message;
+                    if (result.success)
+                    {
+                        await RefreshDataAsync();
+                    }
+                }
+            };
+            
+            actionButtonsPanel.Children.Add(archiveBtn);
+            actionButtonsPanel.Children.Add(deleteBtn);
+            panel.Children.Add(actionButtonsPanel);
+
+
             // 如果用户取消，则保持现状不做任何保存。
             if (await dialog.ShowAsync() != ContentDialogResult.Primary)
             {
                 return;
             }
 
-            var result = _service.SaveSkillMetadata(skill.SkillId, aliasBox.Text, categoryBox.Text);
+            string newColorHex = "";
+            if (isColorModified || (!string.IsNullOrWhiteSpace(currentColorHex) && string.Equals(categoryBox.Text.Trim(), skill.Category, StringComparison.OrdinalIgnoreCase)))
+            {
+                newColorHex = $"#{colorPicker.Color.R:X2}{colorPicker.Color.G:X2}{colorPicker.Color.B:X2}";
+            }
+            
+            var result = _service.SaveSkillMetadata(skill.SkillId, aliasBox.Text, categoryBox.Text, newColorHex);
 
             // 如果保存失败，则直接反馈错误信息。
             if (!result.success)
@@ -495,6 +814,44 @@ namespace ToolBox.Views
 
             await RefreshDataAsync(result.message);
         }
+        private Windows.UI.Color ParseColorHex(string hex)
+        {
+            hex = hex.TrimStart('#');
+            byte a = 255;
+            byte r = 0, g = 0, b = 0;
+            if (hex.Length == 8)
+            {
+                a = Convert.ToByte(hex.Substring(0, 2), 16);
+                r = Convert.ToByte(hex.Substring(2, 2), 16);
+                g = Convert.ToByte(hex.Substring(4, 2), 16);
+                b = Convert.ToByte(hex.Substring(6, 2), 16);
+            }
+            else if (hex.Length == 6)
+            {
+                r = Convert.ToByte(hex.Substring(0, 2), 16);
+                g = Convert.ToByte(hex.Substring(2, 2), 16);
+                b = Convert.ToByte(hex.Substring(4, 2), 16);
+            }
+            return Windows.UI.Color.FromArgb(a, r, g, b);
+        }
+
+        private Microsoft.UI.Xaml.Media.Brush GetBrushFromHex(string hex)
+        {
+            try
+            {
+                return new Microsoft.UI.Xaml.Media.SolidColorBrush(ParseColorHex(hex));
+            }
+            catch
+            {
+                return new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            }
+        }
+    }
+
+    public class CategoryItemViewModel
+    {
+        public string CategoryName { get; set; } = "";
+        public Microsoft.UI.Xaml.Media.Brush BackgroundBrush { get; set; } = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
     }
 
     /// <summary>
@@ -518,6 +875,7 @@ namespace ToolBox.Views
             OnPropertyChanged(nameof(DisplayName));
             OnPropertyChanged(nameof(Category));
             OnPropertyChanged(nameof(IsActive));
+            OnPropertyChanged(nameof(CategoryBackgroundBrush));
         }
 
         /// <summary>
@@ -534,6 +892,46 @@ namespace ToolBox.Views
         /// Skill 分类。
         /// </summary>
         public string Category => _skill.Category;
+
+        /// <summary>
+        /// Skill 分类颜色背景刷。
+        /// </summary>
+        public Microsoft.UI.Xaml.Media.Brush CategoryBackgroundBrush
+        {
+            get
+            {
+                if (!string.IsNullOrWhiteSpace(_skill.CategoryColorHex))
+                {
+                    try
+                    {
+                        var hex = _skill.CategoryColorHex.TrimStart('#');
+                        byte a = 255;
+                        byte r = 0, g = 0, b = 0;
+                        if (hex.Length == 8)
+                        {
+                            a = Convert.ToByte(hex.Substring(0, 2), 16);
+                            r = Convert.ToByte(hex.Substring(2, 2), 16);
+                            g = Convert.ToByte(hex.Substring(4, 2), 16);
+                            b = Convert.ToByte(hex.Substring(6, 2), 16);
+                        }
+                        else if (hex.Length == 6)
+                        {
+                            r = Convert.ToByte(hex.Substring(0, 2), 16);
+                            g = Convert.ToByte(hex.Substring(2, 2), 16);
+                            b = Convert.ToByte(hex.Substring(4, 2), 16);
+                        }
+                        return new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(a, r, g, b));
+                    }
+                    catch { }
+                }
+                
+                if (Microsoft.UI.Xaml.Application.Current.Resources.TryGetValue("AccentFillColorSecondaryBrush", out var res) && res is Microsoft.UI.Xaml.Media.Brush brush)
+                {
+                    return brush;
+                }
+                return new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            }
+        }
 
         /// <summary>
         /// 是否已启用。
