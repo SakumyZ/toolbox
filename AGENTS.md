@@ -107,3 +107,5 @@ Do not remove these packages unless explicitly instructed.
 ## 6. Release Process
 
 If the user needs to perform a release, they should refer to [RELEASE.md](/docs/RELEASE.md) for detailed instructions and guidelines.
+
+- **Git Push Permission Issues**: If an agent encounters a Git commit/push permission error (e.g., `Permission to SakumyZ/toolbox.git denied to ...`), **do not** attempt to bypass it by switching the Git remote URL to HTTPS or embedding temporary OAuth tokens. Instead, **directly prompt the user to switch their local SSH key** to the repository owner's account (e.g., `SakumyZ`).
