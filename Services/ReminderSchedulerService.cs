@@ -424,8 +424,17 @@ namespace ToolBox.Services
                     else if (string.Equals(category, ReminderPresets.OffWork, System.StringComparison.OrdinalIgnoreCase) ||
                              title.Contains("下班") || message.Contains("下班"))
                     {
+                        // 下班提醒映射：使用 offwork.svg 配合紫色背景
                         imageUri = "ms-appx:///Assets/offwork.svg";
                         iconBgColor = "#AB47BC"; // 紫色
+                    }
+                    else if (string.Equals(category, ReminderPresets.Script, System.StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(reminder.ActionType, ReminderActionTypes.Script, System.StringComparison.OrdinalIgnoreCase) ||
+                             title.Contains("脚本") || message.Contains("脚本"))
+                    {
+                        // 脚本执行映射：使用 script.svg 配合红色背景
+                        imageUri = "ms-appx:///Assets/script.svg";
+                        iconBgColor = "#EF5350"; // 红色
                     }
 
                     var visual = new NotificationVisual

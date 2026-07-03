@@ -248,6 +248,7 @@ namespace ToolBox.Models
         public const string StandUp = "起身活动";
         public const string Meeting = "会议提醒";
         public const string OffWork = "下班提醒";
+        public const string Script = "执行脚本";
         public const string Custom = "自定义";
 
         public static readonly IReadOnlyList<string> Categories = new[]
@@ -256,6 +257,7 @@ namespace ToolBox.Models
             StandUp,
             Meeting,
             OffWork,
+            Script,
             Custom
         };
 
@@ -267,6 +269,7 @@ namespace ToolBox.Models
                 StandUp => ("起来活动一下", "站起来走两步，活动肩颈和腰背。"),
                 Meeting => ("会议提醒", "检查会议时间和参会链接，提前做好准备。"),
                 OffWork => ("准备下班", "收尾今天的工作，整理待办和明日计划。"),
+                Script => ("定时任务启动", "定时脚本任务正在自动执行。"),
                 _ => ("提醒事项", "到时间了，处理一下这件事。")
             };
         }

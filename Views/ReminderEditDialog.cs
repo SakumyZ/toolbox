@@ -69,6 +69,11 @@ namespace ToolBox.Views
             };
             foreach (var category in ReminderPresets.Categories)
             {
+                // 如果是“执行脚本”预设，不要作为通知的类型供普通提醒选择（脚本定时有专门的任务类型来管理）
+                if (category == ReminderPresets.Script)
+                {
+                    continue;
+                }
                 _categoryCombo.Items.Add(category);
             }
             _categoryCombo.SelectionChanged += CategoryCombo_SelectionChanged;

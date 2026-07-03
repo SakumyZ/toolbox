@@ -120,8 +120,15 @@ namespace ToolBox.Views
             }
             else if (string.Equals(categoryName, ReminderPresets.OffWork, System.StringComparison.OrdinalIgnoreCase))
             {
+                // 下班提醒预览：使用 offwork.svg 配合紫色背景
                 imageUri = "ms-appx:///Assets/offwork.svg";
                 iconBgColor = "#AB47BC";
+            }
+            else if (string.Equals(categoryName, ReminderPresets.Script, System.StringComparison.OrdinalIgnoreCase))
+            {
+                // 脚本执行预览：使用 script.svg 配合红色背景
+                imageUri = "ms-appx:///Assets/script.svg";
+                iconBgColor = "#EF5350";
             }
 
             var visual = new NotificationVisual
@@ -190,8 +197,15 @@ namespace ToolBox.Views
             }
             else if (string.Equals(categoryName, ReminderPresets.OffWork, System.StringComparison.OrdinalIgnoreCase))
             {
+                // 下班提醒静态预览：使用 offwork.svg 配合紫色背景
                 imageUri = "ms-appx:///Assets/offwork.svg";
                 iconBgColor = "#AB47BC";
+            }
+            else if (string.Equals(categoryName, ReminderPresets.Script, System.StringComparison.OrdinalIgnoreCase))
+            {
+                // 脚本执行静态预览：使用 script.svg 配合红色背景
+                imageUri = "ms-appx:///Assets/script.svg";
+                iconBgColor = "#EF5350";
             }
 
             // 更新静态文本

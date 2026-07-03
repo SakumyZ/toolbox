@@ -40,17 +40,17 @@ git push origin $normalizedVersion --force
 
 $oldEAP = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
-$existingRelease = gh release view $normalizedVersion --repo $Repository 2>$null
+$existingRelease = gh.exe release view $normalizedVersion --repo $Repository 2>$null
 $exitCode = $LASTEXITCODE
 $ErrorActionPreference = $oldEAP
 
 if ($exitCode -eq 0)
 {
-    gh release upload $normalizedVersion $zipPath --repo $Repository --clobber
+    gh.exe release upload $normalizedVersion $zipPath --repo $Repository --clobber
 }
 else
 {
-    gh release create $normalizedVersion $zipPath --repo $Repository --title $normalizedVersion --notes "ToolBox $normalizedVersion release"
+    gh.exe release create $normalizedVersion $zipPath --repo $Repository --title $normalizedVersion --notes "ToolBox $normalizedVersion release"
 }
 
 Write-Host "Release completed: $normalizedVersion"

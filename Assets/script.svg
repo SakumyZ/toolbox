@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <!-- Script Accent Gradient (White to Light Cyan for High Contrast on Red BG) -->
+    <linearGradient id="scriptGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#B2EBF2" stop-opacity="0.95"/>
+    </linearGradient>
+
+    <!-- Glass Body Gradient -->
+    <linearGradient id="glassBodyGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.25"/>
+      <stop offset="15%" stop-color="#FFFFFF" stop-opacity="0.05"/>
+      <stop offset="50%" stop-color="#FFFFFF" stop-opacity="0.0"/>
+      <stop offset="85%" stop-color="#FFFFFF" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.25"/>
+    </linearGradient>
+
+    <!-- Glass Outline Gradient -->
+    <linearGradient id="glassOutlineGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.9"/>
+      <stop offset="50%" stop-color="#E0E0E0" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#B0BEC5" stop-opacity="0.8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Colored Underlayer (CLI Prompt '>') and Underline Cursor (Using rect to guarantee rendering on all DPIs) -->
+  <path d="M 30,38 L 46,50 L 30,62" fill="none" stroke="url(#scriptGrad)" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="52" y="59" width="16" height="6" rx="3" fill="url(#scriptGrad)" />
+
+  <!-- Top Glass Terminal Window Frame -->
+  <rect x="15" y="15" width="70" height="70" rx="10" ry="10" fill="url(#glassBodyGrad)" stroke="url(#glassOutlineGrad)" stroke-width="2.5" />
+
+  <!-- Terminal Window Controls (Red, Yellow, Green Dots with White Borders for High Contrast) -->
+  <circle cx="26" cy="24" r="2.2" fill="#FF5252" stroke="#FFFFFF" stroke-width="0.6" stroke-opacity="0.9" opacity="0.9"/>
+  <circle cx="34" cy="24" r="2.2" fill="#FFC107" stroke="#FFFFFF" stroke-width="0.6" stroke-opacity="0.9" opacity="0.9"/>
+  <circle cx="42" cy="24" r="2.2" fill="#4CAF50" stroke="#FFFFFF" stroke-width="0.6" stroke-opacity="0.9" opacity="0.9"/>
+
+  <!-- Specular Highlights & Reflections -->
+  <!-- Left/Top refraction border -->
+  <path d="M 15,45 L 15,25 A 10,10 0 0 1 25,15 L 55,15" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" opacity="0.65"/>
+  <!-- Specular white dot -->
+  <circle cx="22" cy="20" r="1.2" fill="#FFFFFF" opacity="0.8"/>
+  <!-- Right edge reflection stroke -->
+  <path d="M 85,35 L 85,70" fill="none" stroke="#FFFFFF" stroke-width="1" stroke-linecap="round" opacity="0.35"/>
+</svg>

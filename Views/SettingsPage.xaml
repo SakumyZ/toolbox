@@ -31,6 +31,7 @@
                                 <ComboBoxItem>起身活动</ComboBoxItem>
                                 <ComboBoxItem>会议提醒</ComboBoxItem>
                                 <ComboBoxItem>下班提醒</ComboBoxItem>
+                                <ComboBoxItem>执行脚本</ComboBoxItem>
                                 <ComboBoxItem>自定义</ComboBoxItem>
                             </ComboBox>
                         </Grid>

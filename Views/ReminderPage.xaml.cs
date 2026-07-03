@@ -350,7 +350,7 @@ namespace ToolBox.Views
             ReminderPresets.StandUp => StandUpBrush,
             ReminderPresets.Meeting => MeetingBrush,
             ReminderPresets.OffWork => OffWorkBrush,
-            "执行脚本" => ScriptBrush,
+            ReminderPresets.Script => ScriptBrush,
             _ => CustomBrush
         };
 
