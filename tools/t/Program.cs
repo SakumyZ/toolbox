@@ -14,6 +14,7 @@ namespace ToolBox.Cli
     class Program
     {
         private static readonly SshConfigService _sshService = new();
+        private static readonly ScriptManagerService _scriptService = new();
 
         /// <summary>
         /// 应用程序入口点。
@@ -22,6 +23,13 @@ namespace ToolBox.Cli
         /// <returns>返回执行的退出码 (0 表示成功，非 0 表示失败)。</returns>
         static int Main(string[] args)
         {
+            // 强行锁定控制台的输入与输出编码为 UTF-8，以防止 Emoji 降级为 ??
+            Console.InputEncoding = System.Text.Encoding.UTF8;
+            Console.OutputEncoding = System.Text.Encoding.UTF8;
+
+            // 注册 .NET 额外代码页供应商以支持 CP936 (GBK) 解码
+            System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+
             // 设定 Serilog 只输出干净的原生消息，以契合 CLI 排版风格
             Log.Logger = new LoggerConfiguration()
                 .WriteTo.Console(outputTemplate: "{Message:lj}{NewLine}")
@@ -50,8 +58,8 @@ namespace ToolBox.Cli
                 }
                 else
                 {
-                    Console.WriteLine($"[Error] 未知的命令: {command}。运行 't help' 查看帮助。");
-                    return 1;
+                    // 分支注释：如果未命中静态命令，则转入自定义脚本 CLI 动态路由匹配与执行
+                    return HandleDynamicScriptCommand(args);
                 }
             }
             catch (Exception ex)
@@ -213,6 +221,167 @@ namespace ToolBox.Cli
         {
             Console.WriteLine($"[Error] 未知的 SSH 子命令: '{cmd}'。可用子命令: list, use。");
             return 1;
+        }
+
+        /// <summary>
+        /// 动态脚本 CLI 匹配与参数解析执行逻辑。
+        /// </summary>
+        /// <param name="args">完整参数数组。</param>
+        /// <returns>执行退出码。</returns>
+        private static int HandleDynamicScriptCommand(string[] args)
+        {
+            var allScripts = _scriptService.GetAllScripts()
+                .Where(s => !string.IsNullOrWhiteSpace(s.CliCommandPath))
+                .ToList();
+
+            ScriptDefinition? matchedScript = null;
+            int matchedWordCount = 0;
+
+            // 1. 进行最长前缀路由匹配
+            foreach (var script in allScripts)
+            {
+                var cmdPathWords = script.CliCommandPath!
+                    .Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(w => w.ToLowerInvariant())
+                    .ToArray();
+
+                if (args.Length >= cmdPathWords.Length)
+                {
+                    bool match = true;
+                    for (int i = 0; i < cmdPathWords.Length; i++)
+                    {
+                        if (!args[i].Equals(cmdPathWords[i], StringComparison.OrdinalIgnoreCase))
+                        {
+                            match = false;
+                            break;
+                        }
+                    }
+
+                    // 分支注释：若前缀全部匹配成功，且当前匹配的词数比之前的候选词数长，则视为最优候选
+                    if (match && cmdPathWords.Length > matchedWordCount)
+                    {
+                        matchedScript = script;
+                        matchedWordCount = cmdPathWords.Length;
+                    }
+                }
+            }
+
+            // 分支注释：若最终没有找到任何匹配的脚本路径，打印提示并报错退出
+            if (matchedScript == null)
+            {
+                Console.WriteLine($"[Error] 未知的命令: '{string.Join(" ", args)}'。运行 't help' 查看帮助。");
+                return 1;
+            }
+
+            // 2. 提取除匹配的命令关键字以外的后续参数
+            string[] remainingArgs = args.Skip(matchedWordCount).ToArray();
+
+            // 3. 智能解析并映射命令行参数到脚本的参数定义中
+            var parameterValues = ResolveScriptParameters(matchedScript, remainingArgs);
+
+            if (parameterValues.Count > 0)
+            {
+                Console.WriteLine("[Arguments] 解析出的参数映射:");
+                foreach (var kvp in parameterValues)
+                {
+                    var param = matchedScript.Parameters.FirstOrDefault(p => p.Id == kvp.Key);
+                    string paramName = param != null ? param.Name : $"ID: {kvp.Key}";
+                    Console.WriteLine($"  - {paramName}: {kvp.Value}");
+                }
+                Console.WriteLine();
+            }
+
+            Console.WriteLine($"[Running] 正在运行自定义脚本: {matchedScript.Name}...");
+            
+            // 4. 调用底层的脚本执行引擎，并绑定标准流与错误流以实时流式输出
+            var task = _scriptService.ExecuteScriptAsync(
+                matchedScript,
+                parameterValues,
+                onOutputLine: line => Console.WriteLine(line),
+                onErrorLine: line => {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine(line);
+                    Console.ResetColor();
+                }
+            );
+
+            task.Wait();
+            var result = task.Result;
+
+            // 分支注释：根据脚本最终的运行结果，输出成功或失败，并返回对应的退出码
+            if (result.Success)
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine($"[Success] 脚本执行完成，退出码: {result.ExitCode}");
+                Console.ResetColor();
+                return 0;
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"[Error] 脚本执行失败，退出码: {result.ExitCode}");
+                Console.ResetColor();
+                return result.ExitCode;
+            }
+        }
+
+        /// <summary>
+        /// 智能匹配映射算法：优先基于 Flag 命名参数，再基于位置填充剩余参数。
+        /// </summary>
+        /// <param name="script">脚本定义模型。</param>
+        /// <param name="args">终端传来的后继参数。</param>
+        /// <returns>参数 ID 到值的映射字典。</returns>
+        private static Dictionary<long, string> ResolveScriptParameters(ScriptDefinition script, string[] args)
+        {
+            var values = new Dictionary<long, string>();
+            var paramList = script.Parameters.OrderBy(p => p.SortOrder).ToList();
+            var boundIndices = new HashSet<int>();
+
+            // 1. 优先根据 Flag 命名（例如 ArgumentName 为 "-dir"）在入参中查找匹配
+            foreach (var param in paramList)
+            {
+                if (!string.IsNullOrWhiteSpace(param.ArgumentName))
+                {
+                    string flag = param.ArgumentName.Trim();
+                    int idx = Array.FindIndex(args, a => a.Equals(flag, StringComparison.OrdinalIgnoreCase));
+                    
+                    // 分支注释：找到了匹配的 Flag 且后面跟着参数值
+                    if (idx >= 0 && idx + 1 < args.Length)
+                    {
+                        values[param.Id] = args[idx + 1];
+                        boundIndices.Add(idx);
+                        boundIndices.Add(idx + 1);
+                    }
+                }
+            }
+
+            // 2. 将非 Flag 占用的其它所有“位置参数”按顺序赋给那些尚未获取到值的参数
+            int argPointer = 0;
+            foreach (var param in paramList)
+            {
+                if (!values.ContainsKey(param.Id))
+                {
+                    // 寻找下一个未被命名 Flag 占用的纯位置参数
+                    while (argPointer < args.Length && boundIndices.Contains(argPointer))
+                    {
+                        argPointer++;
+                    }
+
+                    // 分支注释：若位置指针未越界，赋位置参数值，否则使用其默认值填充
+                    if (argPointer < args.Length)
+                    {
+                        values[param.Id] = args[argPointer];
+                        boundIndices.Add(argPointer);
+                        argPointer++;
+                    }
+                    else
+                    {
+                        values[param.Id] = param.DefaultValue ?? string.Empty;
+                    }
+                }
+            }
+
+            return values;
         }
     }
 }

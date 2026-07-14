@@ -20,6 +20,11 @@
   <!-- 通过文件链接机制直接编译现有的业务服务与模型，避免重复造轮子 -->
   <ItemGroup>
     <Compile Include="..\..\Models\SshConfigPreset.cs" Link="Models\SshConfigPreset.cs" />
+    <Compile Include="..\..\Models\ScriptDefinition.cs" Link="Models\ScriptDefinition.cs" />
+    <Compile Include="..\..\Models\ScriptParameterDefinition.cs" Link="Models\ScriptParameterDefinition.cs" />
+    <Compile Include="..\..\Models\ScriptExecutionResult.cs" Link="Models\ScriptExecutionResult.cs" />
+    <Compile Include="..\..\Models\ScriptExecutionLog.cs" Link="Models\ScriptExecutionLog.cs" />
     <Compile Include="..\..\Services\SshConfigService.cs" Link="Services\SshConfigService.cs" />
+    <Compile Include="..\..\Services\ScriptManagerService.cs" Link="Services\ScriptManagerService.cs" />
   </ItemGroup>
 </Project>

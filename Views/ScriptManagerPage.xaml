@@ -148,6 +148,11 @@
                                      Header="命令前缀（可选）"
                                      PlaceholderText="留空则自动检测，例如：python、C:\Python311\python.exe、uv run"
                                      TextChanged="ScriptCommandOptions_TextChanged" />
+
+                            <TextBox x:Name="CliCommandPathBox"
+                                     Header="注册为 CLI 指令（可选）"
+                                     PlaceholderText="以空格分隔，例如：shell sync。注册后可在终端通过 t shell sync 执行此脚本"
+                                     TextChanged="ScriptCommandOptions_TextChanged" />
                         </StackPanel>
                     </Border>
 

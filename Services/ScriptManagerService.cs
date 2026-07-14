@@ -52,7 +52,7 @@ namespace ToolBox.Services
             var command = connection.CreateCommand();
             command.CommandText = @"
                 SELECT Id, Name, Description, ScriptType, FileName, RelativeScriptPath,
-                       WorkingDirectory, CustomInterpreterPath, IsFavorite, IsRunInTerminal, CreatedAt, UpdatedAt
+                       WorkingDirectory, CustomInterpreterPath, IsFavorite, IsRunInTerminal, CreatedAt, UpdatedAt, CliCommandPath
                 FROM Scripts
                 ORDER BY IsFavorite DESC, Name ASC";
 
@@ -72,7 +72,8 @@ namespace ToolBox.Services
                     IsFavorite = reader.GetInt32(8) == 1,
                     IsRunInTerminal = reader.GetInt32(9) == 1,
                     CreatedAt = DateTime.Parse(reader.GetString(10), null, DateTimeStyles.RoundtripKind),
-                    UpdatedAt = DateTime.Parse(reader.GetString(11), null, DateTimeStyles.RoundtripKind)
+                    UpdatedAt = DateTime.Parse(reader.GetString(11), null, DateTimeStyles.RoundtripKind),
+                    CliCommandPath = reader.IsDBNull(12) ? null : reader.GetString(12)
                 });
             }
 
@@ -95,7 +96,7 @@ namespace ToolBox.Services
             var command = connection.CreateCommand();
             command.CommandText = @"
                 SELECT Id, Name, Description, ScriptType, FileName, RelativeScriptPath,
-                       WorkingDirectory, CustomInterpreterPath, IsFavorite, IsRunInTerminal, CreatedAt, UpdatedAt
+                       WorkingDirectory, CustomInterpreterPath, IsFavorite, IsRunInTerminal, CreatedAt, UpdatedAt, CliCommandPath
                 FROM Scripts
                 WHERE Id = $id";
             command.Parameters.AddWithValue("$id", scriptId);
@@ -120,6 +121,7 @@ namespace ToolBox.Services
                 IsRunInTerminal = reader.GetInt32(9) == 1,
                 CreatedAt = DateTime.Parse(reader.GetString(10), null, DateTimeStyles.RoundtripKind),
                 UpdatedAt = DateTime.Parse(reader.GetString(11), null, DateTimeStyles.RoundtripKind),
+                CliCommandPath = reader.IsDBNull(12) ? null : reader.GetString(12),
                 Parameters = GetParametersByScriptId(connection, scriptId)
             };
 
@@ -162,9 +164,9 @@ namespace ToolBox.Services
                     insertCommand.Transaction = transaction;
                     insertCommand.CommandText = @"
                         INSERT INTO Scripts (Name, Description, ScriptType, FileName, RelativeScriptPath, WorkingDirectory,
-                                             CustomInterpreterPath, IsFavorite, IsRunInTerminal, CreatedAt, UpdatedAt)
+                                             CustomInterpreterPath, IsFavorite, IsRunInTerminal, CliCommandPath, CreatedAt, UpdatedAt)
                         VALUES ($name, $description, $scriptType, $fileName, $relativeScriptPath, $workingDirectory,
-                                $commandPrefix, $isFavorite, $isRunInTerminal, $createdAt, $updatedAt);
+                                $commandPrefix, $isFavorite, $isRunInTerminal, $cliCommandPath, $createdAt, $updatedAt);
                         SELECT last_insert_rowid();";
                     BindScriptParameters(insertCommand, script, now, now);
                     insertCommand.Parameters.AddWithValue("$scriptType", script.ScriptType ?? string.Empty);
@@ -200,6 +202,7 @@ namespace ToolBox.Services
                         CustomInterpreterPath = $commandPrefix,
                         IsFavorite = $isFavorite,
                         IsRunInTerminal = $isRunInTerminal,
+                        CliCommandPath = $cliCommandPath,
                         UpdatedAt = $updatedAt
                     WHERE Id = $id";
                 BindScriptParameters(updateCommand, script, script.CreatedAt == default ? now : script.CreatedAt.ToString("o"), now);
@@ -413,46 +416,34 @@ namespace ToolBox.Services
             {
                 if (onOutputLine != null || onErrorLine != null)
                 {
-                    ApplyStreamEncodings(startInfo, script.ScriptType);
-
+                    // 分支注释：流式捕获时不设置 StandardOutputEncoding，依靠从 BaseStream 异步读取原始字节来自适应解码
                     var standardOutputLines = new List<string>();
                     var standardErrorLines = new List<string>();
 
-                    process.OutputDataReceived += (_, args) =>
-                    {
-                        if (args.Data == null)
-                        {
-                            return;
-                        }
+                    process.Start();
 
+                    // 启动异步任务对标准输出流做自适应字节行切割与解码
+                    var outputTask = ReadStreamLineByLineAsync(process.StandardOutput.BaseStream, line =>
+                    {
                         lock (standardOutputLines)
                         {
-                            standardOutputLines.Add(args.Data);
+                            standardOutputLines.Add(line);
                         }
+                        onOutputLine?.Invoke(line);
+                    });
 
-                        onOutputLine?.Invoke(args.Data);
-                    };
-
-                    process.ErrorDataReceived += (_, args) =>
+                    // 启动异步任务对错误输出流做自适应字节行切割与解码
+                    var errorTask = ReadStreamLineByLineAsync(process.StandardError.BaseStream, line =>
                     {
-                        if (args.Data == null)
-                        {
-                            return;
-                        }
-
                         lock (standardErrorLines)
                         {
-                            standardErrorLines.Add(args.Data);
+                            standardErrorLines.Add(line);
                         }
+                        onErrorLine?.Invoke(line);
+                    });
 
-                        onErrorLine?.Invoke(args.Data);
-                    };
-
-                    process.Start();
-                    process.BeginOutputReadLine();
-                    process.BeginErrorReadLine();
-                    await process.WaitForExitAsync();
-                    process.WaitForExit();
+                    // 等待进程退出且两个流异步读取任务全部执行完毕
+                    await Task.WhenAll(process.WaitForExitAsync(), outputTask, errorTask);
 
                     result.StandardOutput = string.Join(Environment.NewLine, standardOutputLines);
                     result.StandardError = string.Join(Environment.NewLine, standardErrorLines);
@@ -828,6 +819,7 @@ namespace ToolBox.Services
             command.ExecuteNonQuery();
             EnsureColumnExists(connection, "Scripts", "IsRunInTerminal", "INTEGER NOT NULL DEFAULT 0");
             EnsureColumnExists(connection, "Scripts", "CustomInterpreterPath", "TEXT NOT NULL DEFAULT ''");
+            EnsureColumnExists(connection, "Scripts", "CliCommandPath", "TEXT NULL");
         }
 
         /// <summary>
@@ -1178,6 +1170,7 @@ namespace ToolBox.Services
             command.Parameters.AddWithValue("$commandPrefix", script.CommandPrefix ?? string.Empty);
             command.Parameters.AddWithValue("$isFavorite", script.IsFavorite ? 1 : 0);
             command.Parameters.AddWithValue("$isRunInTerminal", script.IsRunInTerminal ? 1 : 0);
+            command.Parameters.AddWithValue("$cliCommandPath", (object?)script.CliCommandPath ?? DBNull.Value);
             command.Parameters.AddWithValue("$createdAt", createdAt);
             command.Parameters.AddWithValue("$updatedAt", updatedAt);
         }
@@ -1824,13 +1817,8 @@ private static bool IsBooleanControlType(string? controlType)
 
         private static void ApplyStreamEncodings(ProcessStartInfo startInfo, string scriptType)
         {
-            if (string.Equals(scriptType, ScriptTypes.PowerShell, StringComparison.OrdinalIgnoreCase))
-            {
-                startInfo.StandardOutputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
-                startInfo.StandardErrorEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
-                return;
-            }
-
+            // 分支注释：在 Windows 环境下，控制台子进程重定向标准输出时，其字节流编码默认与系统 OEM 编码一致 (GBK/ANSI)
+            // 统一采用 GetOemEncoding() 自适应系统代码页以实现万能兼容，消除乱码
             var encoding = GetOemEncoding();
             startInfo.StandardOutputEncoding = encoding;
             startInfo.StandardErrorEncoding = encoding;
@@ -2166,6 +2154,50 @@ private static bool IsBooleanControlType(string? controlType)
             }
 
             return candidate;
+        }
+
+        /// <summary>
+        /// 动态自适应按行字节读取器：直接以 \n 分离，对整行原始 byte 调用 DecodeProcessOutput 自适应双解码。
+        /// </summary>
+        private static async Task ReadStreamLineByLineAsync(Stream stream, Action<string> onLineAction)
+        {
+            var buffer = new byte[4096];
+            var byteList = new List<byte>();
+            int bytesRead;
+
+            while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+            {
+                for (int i = 0; i < bytesRead; i++)
+                {
+                    byte b = buffer[i];
+                    // 分支注释：当遇到换行符 \n (0x0A) 时，对一整行未加工的 byte[] 原始数据进行自适应解码
+                    if (b == 0x0A)
+                    {
+                        var lineBytes = byteList.ToArray();
+                        byteList.Clear();
+
+                        // 移除末尾存在的 \r 回车符 (0x0D)
+                        if (lineBytes.Length > 0 && lineBytes[^1] == 0x0D)
+                        {
+                            lineBytes = lineBytes[..^1];
+                        }
+
+                        string decodedLine = DecodeProcessOutput(lineBytes);
+                        onLineAction(decodedLine);
+                    }
+                    else
+                    {
+                        byteList.Add(b);
+                    }
+                }
+            }
+
+            // 分支注释：处理流末尾没有以 \n 结尾的遗存残渣数据
+            if (byteList.Count > 0)
+            {
+                string decodedLine = DecodeProcessOutput(byteList.ToArray());
+                onLineAction(decodedLine);
+            }
         }
     }
 }

@@ -69,6 +69,11 @@ namespace ToolBox.Models
         public DateTime UpdatedAt { get; set; }
 
         /// <summary>
+        /// 注册为 CLI 命令的路径（如 "shell sync"，支持多级命令，以空格分隔）。
+        /// </summary>
+        public string? CliCommandPath { get; set; }
+
+        /// <summary>
         /// 参数定义列表。
         /// </summary>
         public List<ScriptParameterDefinition> Parameters { get; set; } = new();

@@ -130,6 +130,7 @@ namespace ToolBox.Views
             ScriptPathBox.Text = _service.GetScriptAbsolutePath(script);
             WorkingDirectoryBox.Text = script.WorkingDirectory;
             CommandPrefixBox.Text = script.CommandPrefix;
+            CliCommandPathBox.Text = script.CliCommandPath ?? string.Empty;
             OutputBox.Text = string.Empty;
             OpenInTerminalCheckBox.IsChecked = script.IsRunInTerminal;
 
@@ -160,6 +161,7 @@ namespace ToolBox.Views
             ScriptPathBox.Text = string.Empty;
             WorkingDirectoryBox.Text = string.Empty;
             CommandPrefixBox.Text = string.Empty;
+            CliCommandPathBox.Text = string.Empty;
             OutputBox.Text = string.Empty;
             OpenInTerminalCheckBox.IsChecked = false;
 
@@ -723,6 +725,7 @@ namespace ToolBox.Views
             existing.Description = DescriptionBox.Text.Trim();
             existing.WorkingDirectory = WorkingDirectoryBox.Text.Trim();
             existing.CommandPrefix = CommandPrefixBox.Text.Trim();
+            existing.CliCommandPath = string.IsNullOrWhiteSpace(CliCommandPathBox.Text) ? null : CliCommandPathBox.Text.Trim();
             existing.ScriptType = scriptType;
             existing.IsRunInTerminal = OpenInTerminalCheckBox.IsChecked == true;
             return existing;
@@ -849,6 +852,7 @@ namespace ToolBox.Views
                 ScriptType = scriptType,
                 WorkingDirectory = WorkingDirectoryBox.Text.Trim(),
                 CommandPrefix = CommandPrefixBox.Text.Trim(),
+                CliCommandPath = string.IsNullOrWhiteSpace(CliCommandPathBox.Text) ? null : CliCommandPathBox.Text.Trim(),
                 Parameters = _editingParameters.Select(CloneParameter).ToList()
             };
         }
