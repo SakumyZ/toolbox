@@ -1,4 +1,7 @@
 using System;
+using System.IO;
+using System.Linq;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -25,6 +28,7 @@ namespace ToolBox
                 RegisterHotkeys();
                 // 捕获 Frame 导航失败以记录异常（用于定位 Settings 点击崩溃）
                 ContentFrame.NavigationFailed += ContentFrame_NavigationFailed;
+                RegisterCliPath();
                 Log.Information("MainWindow 初始化成功。");
             }
             catch (Exception ex)
@@ -201,7 +205,72 @@ namespace ToolBox
                 case "CleanCache":
                     ContentFrame.Navigate(typeof(CleanCachePage));
                     break;
+                case "ContextMenuManager":
+                    ContentFrame.Navigate(typeof(ContextMenuManagerPage));
+                    break;
             }
+        }
+
+        /// <summary>
+        /// 异步检查并自动注册当前应用 CLI 工具（t.exe）路径到系统用户级 PATH 环境中。
+        /// </summary>
+        private void RegisterCliPath()
+        {
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    string currentDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\');
+                    var targetPaths = new List<string> { currentDir };
+
+                    // 分支注释：如果是 Debug 调试环境，额外将 tools\t 的 Debug 输出目录也加入判断与注册范围
+                    if (currentDir.Contains(@"\bin\Debug\"))
+                    {
+                        string projectRoot = Path.GetFullPath(Path.Combine(currentDir, @"..\..\..\.."));
+                        string debugCliPath = Path.Combine(projectRoot, @"tools\t\bin\Debug\net8.0-windows10.0.19041.0\win-x64");
+                        if (Directory.Exists(debugCliPath))
+                        {
+                            targetPaths.Add(debugCliPath);
+                        }
+                    }
+
+                    string? userPath = Environment.GetEnvironmentVariable("Path", EnvironmentVariableTarget.User);
+                    userPath ??= string.Empty;
+
+                    var existingPaths = userPath
+                        .Split(';', StringSplitOptions.RemoveEmptyEntries)
+                        .Select(p => p.TrimEnd('\\'))
+                        .ToList();
+
+                    bool needUpdate = false;
+                    var pathsToAdd = new List<string>();
+
+                    foreach (var targetPath in targetPaths)
+                    {
+                        // 分支注释：若用户 PATH 中不包含此路径，则添加
+                        if (!existingPaths.Any(p => p.Equals(targetPath, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            pathsToAdd.Add(targetPath);
+                            needUpdate = true;
+                        }
+                    }
+
+                    if (needUpdate)
+                    {
+                        string newPath = userPath;
+                        foreach (var path in pathsToAdd)
+                        {
+                            newPath = newPath.TrimEnd(';') + ";" + path;
+                            Log.Information("ToolBox CLI 自动向用户环境变量 PATH 注册了新路径: {Path}", path);
+                        }
+                        Environment.SetEnvironmentVariable("Path", newPath, EnvironmentVariableTarget.User);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "ToolBox CLI 自动注册用户 PATH 环境变量失败");
+                }
+            });
         }
     }
 }

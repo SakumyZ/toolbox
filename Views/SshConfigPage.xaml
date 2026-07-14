@@ -46,7 +46,8 @@
                     <TextBlock x:Name="ConfigPathText" Text=""
                                FontSize="12"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               TextWrapping="Wrap" />
+                               TextWrapping="Wrap"
+                               IsTextSelectionEnabled="True" />
                 </StackPanel>
 
                 <ListView x:Name="PresetList" Grid.Row="1"
@@ -65,7 +66,7 @@
                             <Grid ColumnDefinitions="*,Auto">
                                 <StackPanel Spacing="3">
                                     <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" IsTextSelectionEnabled="True" />
                                         <Border Background="{Binding ActiveBrush}" CornerRadius="3" Padding="6,1"
                                                 Visibility="{Binding ActiveVisibility}">
                                             <TextBlock Text="当前生效" FontSize="10" Foreground="White" />
@@ -73,7 +74,8 @@
                                     </StackPanel>
                                     <TextBlock Text="{Binding Description}" FontSize="11"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                               TextTrimming="CharacterEllipsis" />
+                                               TextTrimming="CharacterEllipsis"
+                                               IsTextSelectionEnabled="True" />
                                     <TextBlock Text="{Binding LastUsedText}" FontSize="10"
                                                Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
                                 </StackPanel>
@@ -108,10 +110,11 @@
                   Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                   BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
                 <StackPanel Spacing="4" Margin="0,0,0,8">
-                    <TextBlock x:Name="PreviewTitle" Text="预设预览" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                    <TextBlock x:Name="PreviewTitle" Text="预设预览" Style="{StaticResource BodyStrongTextBlockStyle}" IsTextSelectionEnabled="True" />
                     <TextBlock x:Name="PreviewMeta" Text="选择一个预设查看内容"
                                FontSize="12"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               IsTextSelectionEnabled="True" />
                 </StackPanel>
 
                 <TextBox x:Name="PreviewContent" Grid.Row="1"

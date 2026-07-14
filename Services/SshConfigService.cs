@@ -84,7 +84,7 @@ namespace ToolBox.Services
             command.CommandText = @"
                 SELECT Id, Name, Description, Content, IsActive, LastUsedAt, CreatedAt, UpdatedAt
                 FROM SshConfigPresets
-                ORDER BY IsActive DESC, Name ASC";
+                ORDER BY Name ASC";
 
             using var reader = command.ExecuteReader();
             while (reader.Read())

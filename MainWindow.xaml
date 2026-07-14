@@ -48,6 +48,11 @@
                         <FontIcon Glyph="&#xF117;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
+                <NavigationViewItem Tag="ContextMenuManager" Content="右键菜单管理">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xEEC7;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
                 <NavigationViewItemHeader Content="效率工具" />
                 <NavigationViewItem Tag="Reminder" Content="定时器管理">
                     <NavigationViewItem.Icon>
